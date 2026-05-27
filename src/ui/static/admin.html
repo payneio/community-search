@@ -1,0 +1,2060 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Community Search Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e3e6eb;
+  --border-strong: #cdd2da;
+  --text: #1c1f23;
+  --muted: #5e6671;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --success: #16a34a;
+  --warn: #b45309;
+  --row-hover: #f7f9fc;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ============ App bar ============ */
+.appbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: var(--shadow-sm);
+}
+.appbar-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 52px;
+}
+.appbar h1 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.topnav {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+}
+.topnav a {
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.topnav a:hover {
+  background: var(--bg);
+  color: var(--text);
+  text-decoration: none;
+}
+.topnav a.active {
+  background: var(--bg);
+  color: var(--text);
+}
+.topnav .settings-link { margin-left: auto; }
+.token-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.token-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.token-dot.set { background: var(--success); }
+
+/* ============ Main ============ */
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+/* ============ Page header ============ */
+.page-header {
+  margin-bottom: 1.25rem;
+}
+.page-header h2 {
+  font-size: 1.35rem;
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.page-header .subtitle {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.breadcrumb {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: var(--muted); }
+
+/* ============ Cards ============ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+.card h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+.card .card-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: -0.4rem 0 0.75rem;
+}
+
+/* ============ Metric grid ============ */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  box-shadow: var(--shadow-sm);
+}
+.metric .label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.metric .value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+  letter-spacing: -0.02em;
+}
+.metric .sub {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+/* ============ Tabs ============ */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+.tabs a {
+  padding: 0.55rem 0.9rem;
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  font-size: 0.875rem;
+  margin-bottom: -1px;
+}
+.tabs a:hover { color: var(--text); text-decoration: none; }
+.tabs a.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* ============ Forms ============ */
+label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text);
+}
+input[type=text], input[type=number], input[type=url], input[type=password],
+textarea, select {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.875rem;
+  background: var(--surface);
+  color: var(--text);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+textarea { min-height: 80px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+.field { margin-bottom: 0.75rem; }
+.field .help {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem 1rem;
+}
+.form-grid .full { grid-column: 1 / -1; }
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+/* ============ Buttons ============ */
+button {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 80ms, border-color 80ms;
+}
+button:hover:not(:disabled) { background: #f0f2f5; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+button.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+button.danger {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: var(--border-strong);
+}
+button.danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+button.danger.armed {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding: 0.3rem 0.5rem;
+}
+button.ghost:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg);
+}
+button.sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
+.row-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+/* ============ Tables ============ */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+th, td {
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+th {
+  background: var(--bg);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+tbody tr:hover { background: var(--row-hover); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+td input[type=number] { width: 6rem; padding: 0.2rem 0.4rem; }
+
+/* ============ Status / empty / loading ============ */
+.empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--muted);
+}
+.empty p { margin: 0 0 0.5rem; }
+.loading { color: var(--muted); font-size: 0.85rem; padding: 0.5rem 0; }
+.status-msg {
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  margin-top: 0.4rem;
+}
+.status-msg.error { color: var(--danger); }
+.status-msg.success { color: var(--success); }
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.badge.ok { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
+.badge.warn { background: #fffbeb; color: var(--warn); border-color: #fef3c7; }
+.badge.off { background: #fef2f2; color: var(--danger); border-color: #fee2e2; }
+
+/* ============ Toasts ============ */
+#toast-host {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 100;
+  max-width: 360px;
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--muted);
+  padding: 0.6rem 0.85rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  box-shadow: var(--shadow-md);
+  animation: slide-in 160ms ease-out;
+}
+.toast.ok { border-left-color: var(--success); }
+.toast.err { border-left-color: var(--danger); }
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ============ Utility ============ */
+.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.kv-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.kv-row {
+  display: grid;
+  grid-template-columns: 1fr 7rem auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+.json-out {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 0.7rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="appbar-inner">
+    <h1>Community Search</h1>
+    <nav class="topnav" id="topnav">
+      <a data-route="dashboard" href="#/dashboard">Dashboard</a>
+      <a data-route="collections" href="#/collections">Collections</a>
+      <a data-route="federation" href="#/federation">Federation</a>
+      <a data-route="settings" href="#/settings" class="settings-link">Settings</a>
+    </nav>
+    <span class="token-indicator" id="token-indicator" title="Click Settings to manage admin token">
+      <span class="token-dot" id="token-dot"></span>
+      <span id="token-label">no token</span>
+    </span>
+  </div>
+</header>
+
+<main id="view-root" aria-live="polite">
+  <div class="loading">Loading…</div>
+</main>
+
+<div id="toast-host" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   Community Search admin UI — single-file SPA.
+   Hash-routed views: #/dashboard, #/collections, #/collections/:id[/:tab],
+   #/federation, #/settings.
+   ============================================================ */
+
+const TOKEN_KEY = 'cs_admin_token';
+
+// -----------------------------------------------------------------------
+// DOM helper — `h(tag, attrs, ...children)` builds a DOM node.
+// Children are appended as text nodes when not already Node instances,
+// which is XSS-safe for arbitrary user data.
+// -----------------------------------------------------------------------
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k === 'style') el.style.cssText = v;
+      else if (k === 'html') el.innerHTML = v;
+      else if (k === 'dataset') Object.assign(el.dataset, v);
+      else if (k.startsWith('on') && typeof v === 'function') {
+        el.addEventListener(k.slice(2).toLowerCase(), v);
+      } else if (v === true) {
+        el.setAttribute(k, '');
+      } else {
+        el.setAttribute(k, String(v));
+      }
+    }
+  }
+  for (const c of kids.flat(Infinity)) {
+    if (c == null || c === false) continue;
+    el.appendChild(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+function mount(node) {
+  const root = document.getElementById('view-root');
+  clear(root);
+  root.appendChild(node);
+}
+
+// -----------------------------------------------------------------------
+// Toast notifications
+// -----------------------------------------------------------------------
+const toast = (() => {
+  const host = () => document.getElementById('toast-host');
+  function show(kind, msg, ttl = 3500) {
+    const el = h('div', { class: 'toast ' + kind }, msg);
+    host().appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity 200ms';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 220);
+    }, ttl);
+  }
+  return {
+    ok: (m) => show('ok', m),
+    err: (m) => show('err', m, 5000),
+    info: (m) => show('', m),
+  };
+})();
+
+// -----------------------------------------------------------------------
+// API helper
+// -----------------------------------------------------------------------
+class ApiError extends Error {
+  constructor(status, body) {
+    super(`HTTP ${status}: ${body}`);
+    this.status = status;
+    this.body = body;
+  }
+}
+
+function hasToken() {
+  return !!(localStorage.getItem(TOKEN_KEY) || '').trim();
+}
+
+async function api(path, opts = {}) {
+  const token = (localStorage.getItem(TOKEN_KEY) || '').trim();
+  // Short-circuit when no token is set so we don't burn through the
+  // server-side auth lockout budget (5 failures → 15-minute lockout per IP).
+  if (!token && path.startsWith('/api/admin/')) {
+    throw new ApiError(401, 'No admin token set. Open Settings to paste your admin token.');
+  }
+  const headers = { 'Authorization': 'Bearer ' + token, ...(opts.headers || {}) };
+  if (opts.body !== undefined && typeof opts.body !== 'string') {
+    opts.body = JSON.stringify(opts.body);
+  }
+  if (typeof opts.body === 'string' && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const r = await fetch(path, { ...opts, headers });
+  if (!r.ok) {
+    const text = await r.text().catch(() => '');
+    if (r.status === 401) {
+      toast.err('Authentication failed. Set token in Settings.');
+    } else if (r.status === 429) {
+      const retry = r.headers.get('retry-after');
+      toast.err('Locked out for ' + (retry || '?') + 's after repeated auth failures. '
+              + 'Set the correct token in Settings and wait it out.');
+    }
+    throw new ApiError(r.status, text);
+  }
+  return r;
+}
+async function apiJson(path, opts) {
+  const r = await api(path, opts);
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('application/json')) return r.json();
+  const text = await r.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// -----------------------------------------------------------------------
+// Inline two-step confirm button (no native confirm()).
+// First click "arms" it; second click within 3s fires `onConfirm`.
+// -----------------------------------------------------------------------
+function confirmButton(label, onConfirm, opts = {}) {
+  const cls = 'danger sm' + (opts.extraClass ? ' ' + opts.extraClass : '');
+  const btn = h('button', { class: cls }, label);
+  let armed = false;
+  let timer = null;
+  btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (!armed) {
+      armed = true;
+      btn.classList.add('armed');
+      btn.textContent = opts.armedLabel || 'Click again';
+      timer = setTimeout(() => {
+        armed = false;
+        btn.classList.remove('armed');
+        btn.textContent = label;
+      }, 3000);
+    } else {
+      clearTimeout(timer);
+      btn.disabled = true;
+      try { await onConfirm(); }
+      catch (err) { toast.err(opts.errLabel ? `${opts.errLabel}: ${err.message}` : err.message); }
+      finally { btn.disabled = false; }
+    }
+  });
+  return btn;
+}
+
+// -----------------------------------------------------------------------
+// Inline editable number (click to edit, blur or Enter to save)
+// -----------------------------------------------------------------------
+function inlineNumber(initial, onSave, opts = {}) {
+  const span = h('span', { class: 'inline-edit', tabindex: '0', title: 'Click to edit' },
+    String(initial));
+  span.style.cursor = 'pointer';
+  span.style.borderBottom = '1px dashed var(--border-strong)';
+  span.addEventListener('click', () => beginEdit());
+  span.addEventListener('keydown', (e) => { if (e.key === 'Enter') beginEdit(); });
+
+  function beginEdit() {
+    const input = h('input', {
+      type: 'number',
+      value: String(initial),
+      min: opts.min || 0,
+      step: opts.step || 1,
+    });
+    input.style.width = (opts.width || '6.5rem');
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = async () => {
+      if (done) return;
+      done = true;
+      const v = opts.parse ? opts.parse(input.value) : parseInt(input.value, 10);
+      if (Number.isNaN(v) || v === initial) {
+        input.replaceWith(span);
+        return;
+      }
+      input.disabled = true;
+      try {
+        await onSave(v);
+        toast.ok('Saved.');
+      } catch (err) {
+        toast.err(err.message);
+        input.replaceWith(span);
+      }
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commit();
+      if (e.key === 'Escape') { done = true; input.replaceWith(span); }
+    });
+  }
+  return span;
+}
+
+// -----------------------------------------------------------------------
+// Token state
+// -----------------------------------------------------------------------
+function updateTokenIndicator() {
+  const t = localStorage.getItem(TOKEN_KEY) || '';
+  const dot = document.getElementById('token-dot');
+  const lbl = document.getElementById('token-label');
+  if (t) {
+    dot.classList.add('set');
+    lbl.textContent = 'token set';
+  } else {
+    dot.classList.remove('set');
+    lbl.textContent = 'no token';
+  }
+}
+
+// -----------------------------------------------------------------------
+// Time formatting
+// -----------------------------------------------------------------------
+function fmtTimestamp(ts) {
+  if (ts == null || ts === '') return '—';
+  const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+  if (Number.isNaN(d.getTime())) return String(ts);
+  return d.toISOString().replace('T', ' ').slice(0, 16);
+}
+
+/**
+ * Render a timestamp as a span containing relative time ("3 hours ago"),
+ * with the absolute ISO time exposed via the title attribute for hover.
+ * Refers to the caller's tree like other h(...) helpers.
+ */
+function fmtRelativeTime(ts) {
+  if (ts == null || ts === '') return h('span', null, '—');
+  const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts);
+  if (Number.isNaN(d.getTime())) return h('span', null, String(ts));
+  const absolute = d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  const seconds = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+  let rel;
+  if (seconds < 5) rel = 'just now';
+  else if (seconds < 60) rel = seconds + 's ago';
+  else if (seconds < 3600) rel = Math.round(seconds / 60) + 'm ago';
+  else if (seconds < 86400) rel = Math.round(seconds / 3600) + 'h ago';
+  else if (seconds < 604800) rel = Math.round(seconds / 86400) + 'd ago';
+  else if (seconds < 2592000) rel = Math.round(seconds / 604800) + 'w ago';
+  else rel = Math.round(seconds / 2592000) + 'mo ago';
+  return h('span', { title: absolute }, rel);
+}
+function fmtBytes(n) {
+  if (n == null) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n.toString() : n.toFixed(1)) + ' ' + units[i];
+}
+function fmtSeconds(s) {
+  if (s == null) return '—';
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.round(s / 60) + 'm';
+  if (s < 86400) return Math.round(s / 3600) + 'h';
+  return Math.round(s / 86400) + 'd';
+}
+
+// -----------------------------------------------------------------------
+// Resource helpers (small fetch wrappers)
+// -----------------------------------------------------------------------
+const resources = {
+  status: () => apiJson('/api/admin/status'),
+  // Use the admin endpoint so we get the integer rowid as `id`. The public
+  // /api/collections endpoint omits the id and is shaped for peer consumption.
+  collections: async () => {
+    const d = await apiJson('/api/admin/collections');
+    return Array.isArray(d) ? d : (d.collections || []);
+  },
+  collection: async (id) => {
+    const list = await resources.collections();
+    return list.find(c => Number(c.id) === Number(id)) || null;
+  },
+  crawlTargets: async () => {
+    const d = await apiJson('/api/admin/crawl-targets');
+    return d.crawl_targets || [];
+  },
+  outlinks: async (collectionId, opts = {}) => {
+    const params = new URLSearchParams({ collection_id: String(collectionId) });
+    if (opts.limit != null) params.set('limit', String(opts.limit));
+    if (opts.offset != null) params.set('offset', String(opts.offset));
+    const d = await apiJson('/api/admin/outlinks?' + params);
+    return d.outlinks || [];
+  },
+  ranking: async (collectionId) => {
+    try { return await apiJson('/api/admin/ranking?collection_id=' + collectionId); }
+    catch (err) { if (err.status === 404) return {}; throw err; }
+  },
+  config: () => apiJson('/api/admin/config'),
+  nodePeers: async () => {
+    const d = await apiJson('/api/admin/nodes');
+    return Array.isArray(d) ? d : (d.nodes || []);
+  },
+  nodeCollections: async (nodeId) => {
+    const d = await apiJson('/api/admin/nodes/' + nodeId + '/collections');
+    return Array.isArray(d) ? d : (d.collections || []);
+  },
+  discovered: async () => {
+    const d = await apiJson('/api/admin/discovered');
+    return d.engines || [];
+  },
+  collectionPeers: async () => {
+    const d = await apiJson('/api/admin/collection-peers');
+    return Array.isArray(d) ? d : (d.collection_peers || []);
+  },
+};
+
+function noTokenCard() {
+  return h('div', { class: 'card' },
+    h('h3', null, 'Admin token required'),
+    h('div', { class: 'card-hint' },
+      'This page needs an admin token to load. Open Settings to paste yours. '
+      + 'On first run the server prints a generated token to stdout.'),
+    h('div', { class: 'form-actions' },
+      h('a', { href: '#/settings' }, h('button', { class: 'primary' }, 'Open Settings'))),
+  );
+}
+
+// =======================================================================
+// Router
+// =======================================================================
+const routes = [
+  { re: /^#?\/?$/, view: () => viewDashboard() },
+  { re: /^#\/dashboard$/, view: () => viewDashboard() },
+  { re: /^#\/collections$/, view: () => viewCollectionsList() },
+  { re: /^#\/collections\/(\d+)(?:\/([\w-]+))?$/, view: (m) => viewCollectionDetail(+m[1], m[2] || 'overview') },
+  { re: /^#\/federation$/, view: () => viewFederation() },
+  { re: /^#\/settings$/, view: () => viewSettings() },
+];
+
+function activeRouteName() {
+  const hash = location.hash || '#/dashboard';
+  if (hash.startsWith('#/collections')) return 'collections';
+  if (hash.startsWith('#/federation')) return 'federation';
+  if (hash.startsWith('#/settings')) return 'settings';
+  return 'dashboard';
+}
+
+function updateActiveNav() {
+  const active = activeRouteName();
+  document.querySelectorAll('#topnav a').forEach(a => {
+    a.classList.toggle('active', a.dataset.route === active);
+  });
+}
+
+async function router() {
+  updateActiveNav();
+  const hash = location.hash || '#/dashboard';
+  for (const r of routes) {
+    const m = hash.match(r.re);
+    if (m) {
+      try { await r.view(m); }
+      catch (err) {
+        if (err instanceof ApiError) {
+          mount(h('div', { class: 'card' }, 'Error: ' + err.body));
+        } else {
+          mount(h('div', { class: 'card' }, 'Unexpected error: ' + err.message));
+          console.error(err);
+        }
+      }
+      return;
+    }
+  }
+  mount(h('div', { class: 'card' }, 'Unknown route: ' + hash));
+}
+
+window.addEventListener('hashchange', router);
+
+// =======================================================================
+// View: Dashboard
+// =======================================================================
+async function viewDashboard() {
+  const root = document.createElement('div');
+  root.id = 'view-dashboard';
+  root.appendChild(h('div', { class: 'page-header' },
+    h('h2', null, 'Dashboard'),
+    h('div', { class: 'subtitle' }, 'System status at a glance.'),
+  ));
+
+  if (!hasToken()) {
+    root.appendChild(noTokenCard());
+    mount(root);
+    return;
+  }
+
+  const grid = h('div', { class: 'metric-grid' });
+  root.appendChild(grid);
+
+  function setMetric(label, value, sub) {
+    grid.appendChild(h('div', { class: 'metric' },
+      h('div', { class: 'label' }, label),
+      h('div', { class: 'value' }, value),
+      sub != null ? h('div', { class: 'sub' }, sub) : null,
+    ));
+  }
+
+  mount(root);
+
+  // Fetch and populate
+  try {
+    const [status, collections, crawlTargets, nodePeers, discovered] = await Promise.all([
+      resources.status(),
+      resources.collections().catch(() => []),
+      resources.crawlTargets().catch(() => []),
+      resources.nodePeers().catch(() => []),
+      resources.discovered().catch(() => []),
+    ]);
+
+    const usagePct = status.max_index_bytes > 0
+      ? Math.round((status.index_size_bytes / status.max_index_bytes) * 100)
+      : 0;
+    setMetric('Index size', fmtBytes(status.index_size_bytes),
+      'of ' + fmtBytes(status.max_index_bytes) + ' (' + usagePct + '%)');
+    setMetric('Collections', collections.length);
+    setMetric('Crawl targets', status.crawl_targets_total ?? crawlTargets.length,
+      crawlTargets.filter(t => t.enabled).length + ' enabled');
+    const activePeers = nodePeers.filter(p => p.enabled !== false).length;
+    setMetric('Node peers', nodePeers.length,
+      activePeers + ' enabled');
+    setMetric('Discovered engines', discovered.length, 'awaiting promotion');
+    setMetric('Active crawls', status.crawls_active ?? 0,
+      (status.crawls_queued ?? 0) + ' queued');
+  } catch (err) {
+    grid.appendChild(h('div', { class: 'card' }, 'Could not load status: ' + (err.body || err.message)));
+  }
+
+  // Quick-actions card
+  root.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Quick actions'),
+    h('div', { class: 'row' },
+      h('a', { href: '#/collections', class: '' },
+        h('button', null, 'Manage collections')),
+      h('a', { href: '#/federation' },
+        h('button', null, 'Manage peers')),
+      h('a', { href: '#/settings' },
+        h('button', null, 'Runtime settings')),
+    ),
+  ));
+}
+
+// =======================================================================
+// View: Collections list
+// =======================================================================
+async function viewCollectionsList() {
+  const root = h('div', { id: 'view-collections' });
+  root.appendChild(h('div', { class: 'page-header' },
+    h('h2', null, 'Collections'),
+    h('div', { class: 'subtitle' }, 'Each collection has its own index, crawl targets, outlinks, and ranking.'),
+  ));
+
+  if (!hasToken()) {
+    root.appendChild(noTokenCard());
+    mount(root);
+    return;
+  }
+
+  // Create form
+  const createCard = h('div', { class: 'card' },
+    h('h3', null, 'Create collection'));
+  const nameInput = h('input', { type: 'text', placeholder: 'my-collection', required: true });
+  const descInput = h('input', { type: 'text', placeholder: 'Optional description' });
+  const createBtn = h('button', { class: 'primary' }, 'Create');
+  const createMsg = h('div', { class: 'status-msg' });
+  const form = h('form', { class: 'form-grid' },
+    h('div', { class: 'field' }, h('label', null, 'Name'), nameInput),
+    h('div', { class: 'field' }, h('label', null, 'Description'), descInput),
+    h('div', { class: 'field full' }, h('div', { class: 'form-actions' }, createBtn), createMsg),
+  );
+  form.addEventListener('submit', (e) => e.preventDefault());
+  createBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) { createMsg.textContent = 'Name is required.'; createMsg.className = 'status-msg error'; return; }
+    createBtn.disabled = true;
+    try {
+      await api('/api/admin/collections', {
+        method: 'POST',
+        body: { action: 'create', name, description: descInput.value.trim() },
+      });
+      toast.ok('Collection created.');
+      nameInput.value = '';
+      descInput.value = '';
+      createMsg.textContent = '';
+      await refreshList();
+    } catch (err) {
+      createMsg.textContent = 'Error: ' + err.body;
+      createMsg.className = 'status-msg error';
+    } finally {
+      createBtn.disabled = false;
+    }
+  });
+  createCard.appendChild(form);
+  root.appendChild(createCard);
+
+  // List card
+  const listCard = h('div', { class: 'card' }, h('h3', null, 'All collections'));
+  const listWrap = h('div', null, h('div', { class: 'loading' }, 'Loading…'));
+  listCard.appendChild(listWrap);
+  root.appendChild(listCard);
+
+  async function refreshList() {
+    clear(listWrap);
+    let rows;
+    try { rows = await resources.collections(); }
+    catch (err) {
+      listWrap.appendChild(h('div', { class: 'status-msg error' }, 'Failed to load.'));
+      return;
+    }
+    if (rows.length === 0) {
+      listWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, 'No collections yet.'),
+        h('p', { class: 'card-hint' }, 'Create one above to start crawling.'),
+      ));
+      return;
+    }
+    const tbl = h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'ID'),
+        h('th', null, 'Name'),
+        h('th', null, 'Description'),
+        h('th', { style: 'width:1px' }, ''),
+      )),
+    );
+    const tbody = h('tbody');
+    for (const c of rows) {
+      const tr = h('tr', null,
+        h('td', { class: 'mono' }, String(c.id)),
+        h('td', null, h('a', { href: '#/collections/' + c.id }, c.name)),
+        h('td', null, c.description || ''),
+        h('td', null,
+          h('div', { class: 'row-actions' },
+            h('a', { href: '#/collections/' + c.id },
+              h('button', { class: 'sm' }, 'Open')),
+            confirmButton('Delete', async () => {
+              await api('/api/admin/collections', {
+                method: 'POST',
+                body: { action: 'delete', id: c.id },
+              });
+              toast.ok('Deleted.');
+              await refreshList();
+            }, { errLabel: 'Delete failed' }),
+          )),
+      );
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    listWrap.appendChild(tbl);
+  }
+
+  mount(root);
+  await refreshList();
+}
+
+// =======================================================================
+// View: Collection detail (tabs)
+// =======================================================================
+async function viewCollectionDetail(id, tab) {
+  const root = h('div', { id: 'view-collection-detail' });
+
+  if (!hasToken()) {
+    root.appendChild(h('div', { class: 'page-header' }, h('h2', null, 'Collection')));
+    root.appendChild(noTokenCard());
+    mount(root);
+    return;
+  }
+
+  // Header with breadcrumb
+  const headerHost = h('div', { class: 'page-header' },
+    h('div', { class: 'breadcrumb' },
+      h('a', { href: '#/collections' }, 'Collections'), ' / ', h('span', null, '#' + id)),
+    h('h2', null, 'Loading…'),
+  );
+  root.appendChild(headerHost);
+
+  // Tabs
+  const tabDefs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'crawl-targets', label: 'Crawl Targets' },
+    { id: 'outlinks', label: 'Outlinks' },
+    { id: 'ranking', label: 'Ranking' },
+    { id: 'peers', label: 'Peers' },
+  ];
+  const tabs = h('div', { class: 'tabs' });
+  for (const t of tabDefs) {
+    tabs.appendChild(h('a', {
+      href: '#/collections/' + id + '/' + t.id,
+      class: t.id === tab ? 'active' : '',
+      'data-tab': t.id,
+    }, t.label));
+  }
+  root.appendChild(tabs);
+
+  const content = h('div', { id: 'tab-content' });
+  root.appendChild(content);
+
+  mount(root);
+
+  // Load collection meta to populate header
+  let collection;
+  try {
+    collection = await resources.collection(id);
+  } catch (err) {
+    clear(content);
+    content.appendChild(h('div', { class: 'card' }, 'Could not load collection.'));
+    return;
+  }
+  if (!collection) {
+    clear(content);
+    content.appendChild(h('div', { class: 'card' }, 'Collection #' + id + ' not found.'));
+    return;
+  }
+  headerHost.querySelector('h2').textContent = collection.name;
+  if (collection.description) {
+    headerHost.appendChild(h('div', { class: 'subtitle' }, collection.description));
+  }
+
+  // Render the requested tab
+  switch (tab) {
+    case 'overview': renderOverviewTab(content, collection); break;
+    case 'crawl-targets': renderCrawlTargetsTab(content, collection); break;
+    case 'outlinks': renderOutlinksTab(content, collection); break;
+    case 'ranking': renderRankingTab(content, collection); break;
+    case 'peers': renderCollectionPeersTab(content, collection); break;
+    default: content.appendChild(h('div', { class: 'card' }, 'Unknown tab: ' + tab));
+  }
+}
+
+// -----------------------------------------------------------------------
+// Tab: Overview
+// -----------------------------------------------------------------------
+function renderOverviewTab(content, collection) {
+  clear(content);
+
+  // Edit form (pre-filled)
+  const nameInput = h('input', { type: 'text', value: collection.name });
+  const descInput = h('input', { type: 'text', value: collection.description || '' });
+  const saveBtn = h('button', { class: 'primary' }, 'Save');
+  const msg = h('div', { class: 'status-msg' });
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      await api('/api/admin/collections', {
+        method: 'POST',
+        body: { action: 'update', id: collection.id, name: nameInput.value.trim(), description: descInput.value.trim() },
+      });
+      toast.ok('Saved.');
+      // Refresh: re-route to the same view so the header updates
+      router();
+    } catch (err) {
+      msg.textContent = 'Error: ' + err.body;
+      msg.className = 'status-msg error';
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Details'),
+    h('div', { class: 'form-grid' },
+      h('div', { class: 'field' }, h('label', null, 'Name'), nameInput),
+      h('div', { class: 'field' }, h('label', null, 'Description'), descInput),
+    ),
+    h('div', { class: 'form-actions' }, saveBtn),
+    msg,
+  ));
+
+  // Quick links to other tabs
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Manage'),
+    h('div', { class: 'row' },
+      h('a', { href: '#/collections/' + collection.id + '/crawl-targets' },
+        h('button', null, 'Crawl Targets')),
+      h('a', { href: '#/collections/' + collection.id + '/outlinks' },
+        h('button', null, 'Outlinks')),
+      h('a', { href: '#/collections/' + collection.id + '/ranking' },
+        h('button', null, 'Ranking')),
+      h('a', { href: '#/collections/' + collection.id + '/peers' },
+        h('button', null, 'Peers')),
+    ),
+  ));
+}
+
+// -----------------------------------------------------------------------
+// Tab: Crawl Targets
+// -----------------------------------------------------------------------
+async function renderCrawlTargetsTab(content, collection) {
+  clear(content);
+
+  // Add form
+  const urlInput = h('input', { type: 'url', placeholder: 'https://example.com/blog/', required: true });
+  const intervalInput = h('input', { type: 'number', min: '60', value: '3600' });
+  const addBtn = h('button', { class: 'primary' }, 'Add');
+  const addMsg = h('div', { class: 'status-msg' });
+  addBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const url_prefix = urlInput.value.trim();
+    const recrawl_interval_secs = parseInt(intervalInput.value, 10);
+    if (!url_prefix || !recrawl_interval_secs) {
+      addMsg.textContent = 'URL and interval are required.';
+      addMsg.className = 'status-msg error';
+      return;
+    }
+    addBtn.disabled = true;
+    try {
+      await api('/api/admin/crawl-targets', {
+        method: 'POST',
+        body: { action: 'add', collection_id: collection.id, url_prefix, recrawl_interval_secs },
+      });
+      toast.ok('Crawl target added.');
+      urlInput.value = '';
+      await refresh();
+    } catch (err) {
+      addMsg.textContent = 'Error: ' + err.body;
+      addMsg.className = 'status-msg error';
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Add crawl target'),
+    h('div', { class: 'form-grid' },
+      h('div', { class: 'field full' }, h('label', null, 'URL prefix'), urlInput,
+        h('div', { class: 'help' }, 'The crawler stays under this prefix. Outlinks leaving the prefix go to the Outlinks tab for review.')),
+      h('div', { class: 'field' }, h('label', null, 'Recrawl interval (seconds)'), intervalInput),
+      h('div', { class: 'field' }, h('div', { style: 'display:flex;align-items:flex-end;height:100%' }, addBtn)),
+    ),
+    addMsg,
+  ));
+
+  const listCard = h('div', { class: 'card' }, h('h3', null, 'Configured targets'));
+  const listWrap = h('div', null, h('div', { class: 'loading' }, 'Loading…'));
+  listCard.appendChild(listWrap);
+  content.appendChild(listCard);
+
+  async function refresh() {
+    clear(listWrap);
+    let rows;
+    try { rows = await resources.crawlTargets(); }
+    catch (err) {
+      listWrap.appendChild(h('div', { class: 'status-msg error' }, 'Error: ' + err.body));
+      return;
+    }
+    rows = rows.filter(t => Number(t.collection_id) === Number(collection.id));
+    if (rows.length === 0) {
+      listWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, 'No crawl targets yet.'),
+        h('p', { class: 'card-hint' }, 'Add a URL prefix above to start crawling.')));
+      return;
+    }
+    const tbody = h('tbody');
+    for (const t of rows) {
+      tbody.appendChild(h('tr', null,
+        h('td', { class: 'mono' }, String(t.id)),
+        h('td', null, h('a', { href: t.url_prefix, target: '_blank', rel: 'noopener' }, t.url_prefix)),
+        h('td', null, inlineNumber(t.recrawl_interval_secs, async (v) => {
+          await api('/api/admin/crawl-targets', {
+            method: 'POST',
+            body: { action: 'set_interval', id: t.id, recrawl_interval_secs: v },
+          });
+          await refresh();
+        }, { min: 1 }), ' ', h('span', { class: 'card-hint' }, '(' + fmtSeconds(t.recrawl_interval_secs) + ')')),
+        h('td', null, (() => {
+          // Per-target crawl-delay override. Click to edit; empty input clears.
+          const label = t.crawl_delay_secs != null ? (t.crawl_delay_secs + 's') : '—';
+          const title = t.crawl_delay_secs != null
+            ? 'Override: ≥ ' + t.crawl_delay_secs + 's between requests. Click to change.'
+            : 'Uses the global default. Click to set a per-target override.';
+          const span = h('span', { class: 'inline-edit', tabindex: '0', title, style: 'cursor:pointer;border-bottom:1px dashed var(--border-strong)' }, label);
+          const editPrompt = async () => {
+            const cur = t.crawl_delay_secs != null ? String(t.crawl_delay_secs) : '';
+            const v = window.prompt('Per-target crawl delay in seconds (blank = use default):', cur);
+            if (v === null) return;
+            const trimmed = v.trim();
+            const newVal = trimmed === '' ? null : parseInt(trimmed, 10);
+            if (newVal !== null && (Number.isNaN(newVal) || newVal < 0)) {
+              toast.err('Enter a non-negative integer or blank.');
+              return;
+            }
+            try {
+              await api('/api/admin/crawl-targets', {
+                method: 'POST',
+                body: { action: 'set_crawl_delay', id: t.id, crawl_delay_secs: newVal },
+              });
+              toast.ok('Saved.');
+              await refresh();
+            } catch (err) { toast.err('Save failed: ' + err.body); }
+          };
+          span.addEventListener('click', editPrompt);
+          span.addEventListener('keydown', (e) => { if (e.key === 'Enter') editPrompt(); });
+          return span;
+        })()),
+        h('td', null, fmtRelativeTime(t.last_crawled_at)),
+        h('td', null,
+          t.enabled
+            ? h('span', { class: 'badge ok' }, 'enabled')
+            : h('span', { class: 'badge off' }, 'disabled'),
+          t.rate_limited
+            ? h('span', { class: 'badge off', title: 'At least one page returned HTTP 429. Consider raising the interval or slowing crawl pace.', style: 'margin-left:0.4rem' }, '⚠ 429')
+            : null,
+          t.error_pages_count > 0
+            ? h('span', {
+                class: 'badge off',
+                title: t.error_pages_count + ' page(s) most recently returned HTTP 4xx/5xx (excluding 429). Likely dead URLs or auth/access changes.',
+                style: 'margin-left:0.4rem',
+              }, '⚠ ' + t.error_pages_count + ' err' + (t.error_pages_count === 1 ? '' : 's'))
+            : null,
+        ),
+        h('td', null, h('div', { class: 'row-actions' },
+          confirmButton('Remove', async () => {
+            await api('/api/admin/crawl-targets', {
+              method: 'POST',
+              body: { action: 'remove', id: t.id },
+            });
+            toast.ok('Removed.');
+            await refresh();
+          }, { errLabel: 'Remove failed' }),
+        )),
+      ));
+    }
+    const tbl = h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'ID'),
+        h('th', null, 'URL prefix'),
+        h('th', null, 'Interval'),
+        h('th', { title: 'Per-target politeness delay between page fetches. — means default.' }, 'Delay'),
+        h('th', null, 'Last crawled'),
+        h('th', null, 'Status'),
+        h('th', { style: 'width:1px' }, ''),
+      )),
+      tbody,
+    );
+    listWrap.appendChild(tbl);
+  }
+  await refresh();
+}
+
+// -----------------------------------------------------------------------
+// Tab: Outlinks
+// -----------------------------------------------------------------------
+async function renderOutlinksTab(content, collection) {
+  clear(content);
+
+  const filterInput = h('input', { type: 'text', placeholder: 'Filter by host…', style: 'max-width:18rem' });
+  const countLabel = h('span', { class: 'card-hint' }, '');
+  const bulkBtn = h('button', { class: 'sm' }, 'Dismiss all visible');
+  const headerRow = h('div', { class: 'row', style: 'margin-bottom:0.5rem' },
+    filterInput,
+    countLabel,
+    h('span', { class: 'spacer' }),
+    bulkBtn,
+  );
+
+  const listCard = h('div', { class: 'card' },
+    h('h3', null, 'Pending outlink hosts'),
+    h('div', { class: 'card-hint' }, 'External hosts linked from this collection, busiest first. Promote to create a new crawl target, or dismiss (dismissed hosts never come back).'),
+    headerRow,
+  );
+  const listWrap = h('div', null, h('div', { class: 'loading' }, 'Loading…'));
+  listCard.appendChild(listWrap);
+  const loadMoreWrap = h('div', { style: 'margin-top:0.5rem' });
+  listCard.appendChild(loadMoreWrap);
+  content.appendChild(listCard);
+
+  const PAGE_SIZE = 500; // server max
+  let all = [];
+  let nextOffset = 0;
+  let exhausted = false;
+
+  function applyFilter() {
+    const q = filterInput.value.toLowerCase().trim();
+    return q ? all.filter(o => (o.host || '').toLowerCase().includes(q))
+             : all;
+  }
+
+  function render() {
+    clear(listWrap);
+    const rows = applyFilter();
+    if (rows.length === 0) {
+      listWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, all.length === 0 ? 'No pending outlinks.' : 'No matches.')));
+      return;
+    }
+    const tbody = h('tbody');
+    for (const o of rows) {
+      const examples = Array.isArray(o.examples) ? o.examples : [];
+      const examplesCell = h('td', null);
+      if (examples.length === 0) {
+        examplesCell.appendChild(h('span', { class: 'card-hint' }, '—'));
+      } else {
+        const details = h('details');
+        details.appendChild(h('summary', null,
+          examples.length + (examples.length === 1 ? ' example' : ' examples')));
+        const exList = h('ul', { style: 'margin:0.25rem 0 0 1rem;padding:0' });
+        for (const ex of examples) {
+          exList.appendChild(h('li', null,
+            h('a', { href: ex.target_url, target: '_blank', rel: 'noopener' }, ex.target_url),
+            ex.link_text ? h('span', { class: 'card-hint' }, ' — ' + ex.link_text) : null,
+          ));
+        }
+        details.appendChild(exList);
+        examplesCell.appendChild(details);
+      }
+      tbody.appendChild(h('tr', null,
+        h('td', { class: 'mono' }, o.host),
+        h('td', { class: 'mono', style: 'text-align:right' }, String(o.link_count || 0)),
+        examplesCell,
+        h('td', null, h('div', { class: 'row-actions' },
+          h('button', { class: 'primary sm', onClick: async () => {
+            const defaultPrefix = 'https://' + o.host + '/';
+            const prefix = window.prompt('URL prefix for the new crawl target:', defaultPrefix);
+            if (prefix === null) return;
+            const secs = window.prompt('Recrawl interval (seconds):', '3600');
+            if (secs === null) return;
+            try {
+              await api('/api/admin/outlinks/' + o.id + '/promote', {
+                method: 'POST',
+                body: {
+                  recrawl_interval_secs: parseInt(secs, 10) || 3600,
+                  url_prefix: prefix.trim() || defaultPrefix,
+                },
+              });
+              toast.ok('Promoted.');
+              await refresh();
+            } catch (err) { toast.err('Promote failed: ' + err.body); }
+          } }, 'Promote'),
+          confirmButton('Dismiss', async () => {
+            await api('/api/admin/outlinks/' + o.id + '/dismiss', { method: 'POST', body: '{}' });
+            await refresh();
+          }, { errLabel: 'Dismiss failed' }),
+        )),
+      ));
+    }
+    listWrap.appendChild(h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Host'),
+        h('th', { style: 'text-align:right' }, 'Links'),
+        h('th', null, 'Examples'),
+        h('th', { style: 'width:1px' }, ''),
+      )),
+      tbody,
+    ));
+  }
+
+  async function refresh() {
+    all = [];
+    nextOffset = 0;
+    exhausted = false;
+    clear(loadMoreWrap);
+    try {
+      const first = await resources.outlinks(collection.id, { limit: PAGE_SIZE, offset: 0 });
+      all = first;
+      nextOffset = first.length;
+      exhausted = first.length < PAGE_SIZE;
+    }
+    catch (err) {
+      clear(listWrap);
+      listWrap.appendChild(h('div', { class: 'status-msg error' }, 'Error: ' + err.body));
+      return;
+    }
+    render();
+    updateLoadMore();
+  }
+
+  async function loadMore() {
+    if (exhausted) return;
+    try {
+      const more = await resources.outlinks(collection.id, { limit: PAGE_SIZE, offset: nextOffset });
+      all = all.concat(more);
+      nextOffset += more.length;
+      if (more.length < PAGE_SIZE) exhausted = true;
+    } catch (err) {
+      toast.err('Load more failed: ' + err.body);
+      return;
+    }
+    render();
+    updateLoadMore();
+  }
+
+  function updateLoadMore() {
+    clear(loadMoreWrap);
+    countLabel.textContent = all.length + ' loaded' + (exhausted ? '' : '+');
+    if (!exhausted) {
+      const btn = h('button', { class: 'sm' }, 'Load more');
+      btn.addEventListener('click', () => { btn.disabled = true; loadMore(); });
+      loadMoreWrap.appendChild(btn);
+    }
+  }
+
+  filterInput.addEventListener('input', render);
+  bulkBtn.addEventListener('click', async () => {
+    const visible = applyFilter();
+    if (visible.length === 0) return;
+    if (!confirm('Dismiss ' + visible.length + ' host(s)? Dismissed hosts will be ignored on future crawls.')) return;
+    bulkBtn.disabled = true;
+    try {
+      for (const o of visible) {
+        await api('/api/admin/outlinks/' + o.id + '/dismiss', { method: 'POST', body: '{}' });
+      }
+      toast.ok('Dismissed ' + visible.length + '.');
+      await refresh();
+    } catch (err) {
+      toast.err('Bulk dismiss failed: ' + err.body);
+    } finally { bulkBtn.disabled = false; }
+  });
+
+  await refresh();
+}
+
+// -----------------------------------------------------------------------
+// Tab: Ranking
+// -----------------------------------------------------------------------
+async function renderRankingTab(content, collection) {
+  clear(content);
+
+  let config;
+  try { config = await resources.ranking(collection.id); }
+  catch (err) {
+    content.appendChild(h('div', { class: 'card' }, 'Error: ' + err.body));
+    return;
+  }
+
+  const halfLifeInput = h('input', { type: 'number', min: '1', step: '1',
+    value: config.freshness_half_life_days ?? '' });
+
+  // Structured editors (add-a-row) for weights and boosts
+  const weights = { ...(config.source_weights || {}) };
+  const boosts = { ...(config.domain_boosts || {}) };
+
+  const weightsList = h('div', { class: 'kv-list' });
+  const boostsList = h('div', { class: 'kv-list' });
+
+  function renderKvList(host, dict, valueStep, placeholderKey, placeholderVal) {
+    clear(host);
+    for (const [k, v] of Object.entries(dict)) {
+      addKvRow(host, dict, k, v, valueStep, placeholderKey, placeholderVal);
+    }
+    // Trailing "add" row
+    const keyInput = h('input', { type: 'text', placeholder: placeholderKey });
+    const valInput = h('input', { type: 'number', step: valueStep, placeholder: placeholderVal });
+    const addBtn = h('button', { class: 'sm' }, '+ Add');
+    addBtn.addEventListener('click', () => {
+      const k = keyInput.value.trim();
+      const v = parseFloat(valInput.value);
+      if (!k || Number.isNaN(v)) return;
+      dict[k] = v;
+      renderKvList(host, dict, valueStep, placeholderKey, placeholderVal);
+    });
+    host.appendChild(h('div', { class: 'kv-row' }, keyInput, valInput, addBtn));
+  }
+
+  function addKvRow(host, dict, k, v, valueStep, placeholderKey, placeholderVal) {
+    const keyInput = h('input', { type: 'text', value: k });
+    const valInput = h('input', { type: 'number', step: valueStep, value: String(v) });
+    const removeBtn = h('button', { class: 'ghost sm' }, '×');
+    keyInput.addEventListener('change', () => {
+      const newKey = keyInput.value.trim();
+      if (newKey === k || !newKey) return;
+      const old = dict[k];
+      delete dict[k];
+      dict[newKey] = old;
+      renderKvList(host, dict, valueStep, placeholderKey, placeholderVal);
+    });
+    valInput.addEventListener('input', () => {
+      const newVal = parseFloat(valInput.value);
+      if (!Number.isNaN(newVal)) dict[k] = newVal;
+    });
+    removeBtn.addEventListener('click', () => {
+      delete dict[k];
+      renderKvList(host, dict, valueStep, placeholderKey, placeholderVal);
+    });
+    host.appendChild(h('div', { class: 'kv-row' }, keyInput, valInput, removeBtn));
+  }
+
+  renderKvList(weightsList, weights, '0.01', 'host.example.com', '1.0');
+  renderKvList(boostsList, boosts, '0.01', 'domain.com', '1.5');
+
+  const saveBtn = h('button', { class: 'primary' }, 'Save ranking config');
+  const msg = h('div', { class: 'status-msg' });
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    const half = parseFloat(halfLifeInput.value);
+    const payload = {
+      collection_id: collection.id,
+      freshness_half_life_days: Number.isNaN(half) ? null : half,
+      source_weights: weights,
+      domain_boosts: boosts,
+    };
+    try {
+      await api('/api/admin/ranking', { method: 'PUT', body: payload });
+      toast.ok('Ranking config saved.');
+      msg.textContent = '';
+    } catch (err) {
+      msg.textContent = 'Error: ' + err.body;
+      msg.className = 'status-msg error';
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Freshness'),
+    h('div', { class: 'field' },
+      h('label', null, 'Half-life (days)'),
+      halfLifeInput,
+      h('div', { class: 'help' }, 'Documents lose half their freshness boost every N days.')),
+  ));
+
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Source weights'),
+    h('div', { class: 'card-hint' }, 'Multiplier applied to documents from a given host. 1.0 is neutral.'),
+    weightsList,
+  ));
+
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Domain boosts'),
+    h('div', { class: 'card-hint' }, 'Multiplier applied to documents from a given domain.'),
+    boostsList,
+  ));
+
+  content.appendChild(h('div', { class: 'card' },
+    h('div', { class: 'form-actions' }, saveBtn),
+    msg,
+  ));
+}
+
+// -----------------------------------------------------------------------
+// Tab: Collection peers (scoped to this collection)
+// -----------------------------------------------------------------------
+async function renderCollectionPeersTab(content, collection) {
+  clear(content);
+
+  const nodeSel = h('select', null, h('option', { value: '' }, 'Loading…'));
+  const remoteSel = h('select', null, h('option', { value: '' }, 'Select a node peer first'));
+  const weightInput = h('input', { type: 'number', value: '1.0', step: '0.01', min: '0' });
+  const addBtn = h('button', { class: 'primary' }, 'Subscribe');
+  const addMsg = h('div', { class: 'status-msg' });
+
+  // Populate node peers
+  let nodes = [];
+  try { nodes = await resources.nodePeers(); }
+  catch (err) { /* ignore */ }
+  clear(nodeSel);
+  nodeSel.appendChild(h('option', { value: '' }, '-- select node peer --'));
+  for (const n of nodes) {
+    nodeSel.appendChild(h('option', { value: String(n.id) }, n.name || n.url));
+  }
+
+  nodeSel.addEventListener('change', async () => {
+    clear(remoteSel);
+    if (!nodeSel.value) {
+      remoteSel.appendChild(h('option', { value: '' }, 'Select a node peer first'));
+      return;
+    }
+    remoteSel.appendChild(h('option', { value: '' }, 'Loading…'));
+    try {
+      const remote = await resources.nodeCollections(nodeSel.value);
+      clear(remoteSel);
+      remoteSel.appendChild(h('option', { value: '' }, '-- select --'));
+      for (const c of remote) {
+        const name = typeof c === 'string' ? c : c.name;
+        remoteSel.appendChild(h('option', { value: name }, name));
+      }
+    } catch (err) {
+      clear(remoteSel);
+      remoteSel.appendChild(h('option', { value: '' }, 'Error loading'));
+    }
+  });
+
+  addBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const node_peer_id = parseInt(nodeSel.value, 10);
+    const remote_collection = remoteSel.value;
+    const source_weight = parseFloat(weightInput.value);
+    if (!node_peer_id || !remote_collection) {
+      addMsg.textContent = 'Pick a node peer and a remote collection.';
+      addMsg.className = 'status-msg error';
+      return;
+    }
+    addBtn.disabled = true;
+    try {
+      await api('/api/admin/collection-peers', {
+        method: 'POST',
+        body: { local_collection: collection.name, node_peer_id, remote_collection, source_weight },
+      });
+      toast.ok('Subscribed.');
+      addMsg.textContent = '';
+      await refresh();
+    } catch (err) {
+      addMsg.textContent = 'Error: ' + err.body;
+      addMsg.className = 'status-msg error';
+    } finally { addBtn.disabled = false; }
+  });
+
+  content.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Subscribe to a remote collection'),
+    h('div', { class: 'card-hint' }, 'Search results from the remote collection will be merged into this collection.'),
+    h('div', { class: 'form-grid' },
+      h('div', { class: 'field' }, h('label', null, 'Node peer'), nodeSel),
+      h('div', { class: 'field' }, h('label', null, 'Remote collection'), remoteSel),
+      h('div', { class: 'field' }, h('label', null, 'Source weight'), weightInput),
+      h('div', { class: 'field' }, h('div', { style: 'display:flex;align-items:flex-end;height:100%' }, addBtn)),
+    ),
+    addMsg,
+  ));
+
+  const listCard = h('div', { class: 'card' }, h('h3', null, 'Active subscriptions'));
+  const listWrap = h('div', null, h('div', { class: 'loading' }, 'Loading…'));
+  listCard.appendChild(listWrap);
+  content.appendChild(listCard);
+
+  // Build node-peer lookup so we can show URL instead of bare id
+  const nodeById = new Map(nodes.map(n => [String(n.id), n]));
+
+  async function refresh() {
+    clear(listWrap);
+    let rows;
+    try { rows = await resources.collectionPeers(); }
+    catch (err) {
+      listWrap.appendChild(h('div', { class: 'status-msg error' }, 'Error: ' + err.body));
+      return;
+    }
+    rows = rows.filter(cp => cp.local_collection === collection.name);
+    if (rows.length === 0) {
+      listWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, 'No active subscriptions.'),
+        h('p', { class: 'card-hint' }, 'Subscribe to remote collections from your node peers above.')));
+      return;
+    }
+    const tbody = h('tbody');
+    for (const cp of rows) {
+      const node = nodeById.get(String(cp.node_peer_id));
+      tbody.appendChild(h('tr', null,
+        h('td', null, node ? (node.name || node.url) : ('peer #' + cp.node_peer_id)),
+        h('td', null, cp.remote_collection),
+        h('td', null, cp.source_weight != null ? String(cp.source_weight) : ''),
+        h('td', null, h('div', { class: 'row-actions' },
+          confirmButton('Unsubscribe', async () => {
+            await api('/api/admin/collection-peers/' + cp.id, { method: 'DELETE' });
+            await refresh();
+          }, { armedLabel: 'Confirm', errLabel: 'Unsubscribe failed' }),
+        )),
+      ));
+    }
+    listWrap.appendChild(h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Node peer'),
+        h('th', null, 'Remote collection'),
+        h('th', null, 'Weight'),
+        h('th', { style: 'width:1px' }, ''),
+      )),
+      tbody,
+    ));
+  }
+
+  await refresh();
+}
+
+// =======================================================================
+// View: Federation
+// =======================================================================
+async function viewFederation() {
+  const root = h('div', { id: 'view-federation' });
+  root.appendChild(h('div', { class: 'page-header' },
+    h('h2', null, 'Federation'),
+    h('div', { class: 'subtitle' },
+      'Manage server-to-server peering. Promote discovered engines to peers, '
+      + 'then subscribe to their collections from each Collection’s Peers tab.'),
+  ));
+
+  if (!hasToken()) {
+    root.appendChild(noTokenCard());
+    mount(root);
+    return;
+  }
+
+  // Node peers card
+  const nodePeersCard = h('div', { class: 'card', id: 'node-peers' },
+    h('h3', null, 'Node peers'));
+  const npAddUrl = h('input', { type: 'url', placeholder: 'https://peer.example.com', required: true });
+  const npAddName = h('input', { type: 'text', placeholder: 'Friendly name (optional)' });
+  const npAddBtn = h('button', { class: 'primary' }, 'Add peer');
+  const npAddMsg = h('div', { class: 'status-msg' });
+  npAddBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const url = npAddUrl.value.trim();
+    if (!url) { npAddMsg.textContent = 'URL is required.'; npAddMsg.className = 'status-msg error'; return; }
+    const body = { url };
+    const name = npAddName.value.trim();
+    if (name) body.name = name;
+    npAddBtn.disabled = true;
+    try {
+      await api('/api/admin/nodes', { method: 'POST', body });
+      toast.ok('Node peer added.');
+      npAddUrl.value = ''; npAddName.value = '';
+      npAddMsg.textContent = '';
+      await refreshNodePeers();
+    } catch (err) {
+      npAddMsg.textContent = 'Error: ' + err.body;
+      npAddMsg.className = 'status-msg error';
+    } finally { npAddBtn.disabled = false; }
+  });
+  nodePeersCard.appendChild(h('div', { class: 'form-grid' },
+    h('div', { class: 'field' }, h('label', null, 'URL'), npAddUrl),
+    h('div', { class: 'field' }, h('label', null, 'Name'), npAddName),
+    h('div', { class: 'field' }, h('div', { style: 'display:flex;align-items:flex-end;height:100%' }, npAddBtn)),
+  ));
+  nodePeersCard.appendChild(npAddMsg);
+  const nodePeersWrap = h('div', { id: 'node-peers-table-wrap' },
+    h('div', { class: 'loading' }, 'Loading…'));
+  nodePeersCard.appendChild(nodePeersWrap);
+  root.appendChild(nodePeersCard);
+
+  async function refreshNodePeers() {
+    clear(nodePeersWrap);
+    let rows;
+    try { rows = await resources.nodePeers(); }
+    catch (err) {
+      nodePeersWrap.appendChild(h('div', { class: 'status-msg error' }, 'Error: ' + err.body));
+      return;
+    }
+    if (rows.length === 0) {
+      nodePeersWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, 'No node peers yet.'),
+        h('p', { class: 'card-hint' }, 'Add a peer above, or promote one from the Discovered engines list.')));
+      return;
+    }
+    const tbody = h('tbody');
+    for (const n of rows) {
+      const enabled = n.enabled !== false;
+      const fails = n.consecutive_failures != null ? n.consecutive_failures
+                  : (n.failure_count != null ? n.failure_count
+                  : (n.failures != null ? n.failures : 0));
+      tbody.appendChild(h('tr', null,
+        h('td', null, h('a', { href: n.url, target: '_blank', rel: 'noopener' }, n.url)),
+        h('td', null, n.name || ''),
+        h('td', null, enabled
+          ? h('span', { class: 'badge ok' }, 'enabled')
+          : h('span', { class: 'badge off' }, 'disabled')),
+        h('td', null, fmtTimestamp(n.last_checked_at || n.last_response_at || n.last_seen)),
+        h('td', { class: 'num' }, String(fails)),
+        h('td', null, h('div', { class: 'row-actions' },
+          h('button', { class: 'sm', onClick: async (e) => {
+            e.currentTarget.disabled = true;
+            try {
+              await api('/api/admin/nodes/' + n.id, {
+                method: 'PUT', body: { enabled: !enabled },
+              });
+              await refreshNodePeers();
+            } catch (err) { toast.err('Toggle failed: ' + err.body); e.currentTarget.disabled = false; }
+          } }, enabled ? 'Disable' : 'Enable'),
+          h('button', { class: 'sm', onClick: async () => {
+            try {
+              const list = await resources.nodeCollections(n.id);
+              if (!list.length) { toast.info('No collections on remote peer.'); return; }
+              toast.info('Remote collections: ' + list.map(c => typeof c === 'string' ? c : c.name).join(', '));
+            } catch (err) { toast.err('Browse failed: ' + err.body); }
+          } }, 'Browse'),
+          confirmButton('Delete', async () => {
+            await api('/api/admin/nodes/' + n.id, { method: 'DELETE' });
+            await refreshNodePeers();
+          }, { errLabel: 'Delete failed' }),
+        )),
+      ));
+    }
+    nodePeersWrap.appendChild(h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'URL'),
+        h('th', null, 'Name'),
+        h('th', null, 'Status'),
+        h('th', null, 'Last checked'),
+        h('th', null, 'Failures'),
+        h('th', { style: 'width:1px' }, ''),
+      )),
+      tbody,
+    ));
+  }
+
+  // Discovered engines card
+  const discoveredCard = h('div', { class: 'card', id: 'discovered-engines' },
+    h('h3', null, 'Discovered engines'),
+    h('div', { class: 'card-hint' },
+      'Engines learned via gossip. Passive — not used in searches until promoted to a node peer.'));
+  const gossipUrl = h('input', { type: 'url', placeholder: 'https://engine.example.com' });
+  const gossipBtn = h('button', null, 'Trigger gossip');
+  gossipBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const url = gossipUrl.value.trim();
+    if (!url) { toast.err('Enter a URL to gossip with.'); return; }
+    gossipBtn.disabled = true;
+    try {
+      const d = await apiJson('/api/admin/gossip/trigger', { method: 'POST', body: { url } });
+      toast.ok(`Gossip ok: sent=${d.sent_count} received=${d.received_count}`);
+      gossipUrl.value = '';
+      await refreshDiscovered();
+    } catch (err) {
+      toast.err('Gossip failed: ' + err.body);
+    } finally { gossipBtn.disabled = false; }
+  });
+  discoveredCard.appendChild(h('div', { class: 'row', style: 'margin-bottom:0.5rem' },
+    gossipUrl, gossipBtn));
+  const discoveredWrap = h('div', { id: 'discovered-engines-table-wrap' },
+    h('div', { class: 'loading' }, 'Loading…'));
+  // For backwards compat with smoke check + tests, keep id="discovered-engines-table"
+  discoveredCard.appendChild(discoveredWrap);
+  root.appendChild(discoveredCard);
+
+  async function refreshDiscovered() {
+    clear(discoveredWrap);
+    let engines;
+    try { engines = await resources.discovered(); }
+    catch (err) {
+      discoveredWrap.appendChild(h('div', { class: 'status-msg error' }, 'Error: ' + err.body));
+      return;
+    }
+    if (engines.length === 0) {
+      discoveredWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, 'No engines discovered yet.'),
+        h('p', { class: 'card-hint' }, 'They appear here automatically when peers gossip about other engines.')));
+      // Keep table element present even when empty (sentinel id for tests)
+      discoveredWrap.appendChild(h('table', { id: 'discovered-engines-table', style: 'display:none' }));
+      return;
+    }
+    const tbody = h('tbody');
+    for (const e of engines) {
+      tbody.appendChild(h('tr', null,
+        h('td', null, h('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.url)),
+        h('td', null, e.name || ''),
+        h('td', null, e.description || ''),
+        h('td', null, fmtTimestamp(e.first_seen)),
+        h('td', null, fmtTimestamp(e.last_seen)),
+        h('td', null, h('div', { class: 'row-actions' },
+          h('button', { class: 'primary sm', 'data-action': 'promote', 'data-url': e.url, onClick: async () => {
+            try {
+              await api('/api/admin/discovered/promote', { method: 'POST', body: { url: e.url } });
+              toast.ok('Promoted to node peer.');
+              await Promise.all([refreshDiscovered(), refreshNodePeers()]);
+            } catch (err) { toast.err('Promote failed: ' + err.body); }
+          } }, 'Promote'),
+          confirmButton('Remove', async () => {
+            await api('/api/admin/discovered?url=' + encodeURIComponent(e.url), { method: 'DELETE' });
+            await refreshDiscovered();
+          }, { extraClass: 'remove-discovered', errLabel: 'Remove failed' }),
+        )),
+      ));
+    }
+    discoveredWrap.appendChild(h('table', { id: 'discovered-engines-table' },
+      h('thead', null, h('tr', null,
+        h('th', null, 'URL'),
+        h('th', null, 'Name'),
+        h('th', null, 'Description'),
+        h('th', null, 'First seen'),
+        h('th', null, 'Last seen'),
+        h('th', { style: 'width:1px' }, ''),
+      )),
+      tbody,
+    ));
+  }
+
+  // Collection-peers summary
+  const cpCard = h('div', { class: 'card', id: 'collection-peers' },
+    h('h3', null, 'All collection subscriptions'),
+    h('div', { class: 'card-hint' },
+      'Per-collection subscriptions are managed on each collection’s Peers tab.'));
+  const cpWrap = h('div', null, h('div', { class: 'loading' }, 'Loading…'));
+  cpCard.appendChild(cpWrap);
+  root.appendChild(cpCard);
+
+  async function refreshCollectionPeers() {
+    clear(cpWrap);
+    let rows;
+    try { rows = await resources.collectionPeers(); }
+    catch (err) {
+      cpWrap.appendChild(h('div', { class: 'status-msg error' }, 'Error: ' + err.body));
+      return;
+    }
+    if (rows.length === 0) {
+      cpWrap.appendChild(h('div', { class: 'empty' },
+        h('p', null, 'No collection subscriptions yet.')));
+      return;
+    }
+    const nodes = await resources.nodePeers().catch(() => []);
+    const nodeById = new Map(nodes.map(n => [String(n.id), n]));
+    const tbody = h('tbody');
+    for (const cp of rows) {
+      const node = nodeById.get(String(cp.node_peer_id));
+      tbody.appendChild(h('tr', null,
+        h('td', null, cp.local_collection),
+        h('td', null, node ? (node.name || node.url) : ('peer #' + cp.node_peer_id)),
+        h('td', null, cp.remote_collection),
+        h('td', null, cp.source_weight != null ? String(cp.source_weight) : ''),
+      ));
+    }
+    cpWrap.appendChild(h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Local'),
+        h('th', null, 'Node peer'),
+        h('th', null, 'Remote'),
+        h('th', null, 'Weight'),
+      )),
+      tbody,
+    ));
+  }
+
+  mount(root);
+  await Promise.all([refreshNodePeers(), refreshDiscovered(), refreshCollectionPeers()]);
+}
+
+// =======================================================================
+// View: Settings
+// =======================================================================
+async function viewSettings() {
+  const root = h('div', { id: 'view-settings' });
+  root.appendChild(h('div', { class: 'page-header' },
+    h('h2', null, 'Settings'),
+    h('div', { class: 'subtitle' }, 'Admin token and runtime tunables.'),
+  ));
+
+  // -------- Admin token --------
+  const tokenInput = h('input', { type: 'password',
+    value: localStorage.getItem(TOKEN_KEY) || '', placeholder: 'Paste admin token' });
+  const showCb = h('input', { type: 'checkbox' });
+  showCb.addEventListener('change', () => { tokenInput.type = showCb.checked ? 'text' : 'password'; });
+  const saveTokenBtn = h('button', { class: 'primary' }, 'Save token');
+  const clearTokenBtn = h('button', null, 'Clear');
+  const tokenMsg = h('div', { class: 'status-msg' });
+  saveTokenBtn.addEventListener('click', async () => {
+    const wasEmpty = !hasToken();
+    localStorage.setItem(TOKEN_KEY, tokenInput.value.trim());
+    updateTokenIndicator();
+    tokenMsg.textContent = 'Token saved.';
+    tokenMsg.className = 'status-msg success';
+    toast.ok('Token saved.');
+    // If they just set the first token, re-render Settings so the runtime
+    // config form populates with live values.
+    if (wasEmpty) router();
+  });
+  clearTokenBtn.addEventListener('click', () => {
+    localStorage.removeItem(TOKEN_KEY);
+    tokenInput.value = '';
+    updateTokenIndicator();
+    tokenMsg.textContent = 'Token cleared.';
+    tokenMsg.className = 'status-msg';
+  });
+  root.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Admin token'),
+    h('div', { class: 'card-hint' },
+      'Stored in this browser’s localStorage. Every /api/admin/* request adds an Authorization: Bearer header.'),
+    h('div', { class: 'field' }, h('label', null, 'Token'), tokenInput,
+      h('div', { class: 'row', style: 'margin-top:0.3rem' },
+        h('label', { style: 'font-weight:400;margin:0;font-size:0.8rem' }, showCb, ' Show'))),
+    h('div', { class: 'form-actions' }, saveTokenBtn, clearTokenBtn),
+    tokenMsg,
+  ));
+
+  // -------- Runtime config (pre-filled with current values) --------
+  let config = {};
+  try { config = await resources.config(); }
+  catch (err) { /* leave defaults */ }
+
+  function makeNumField(key, label, hint) {
+    const input = h('input', { type: 'number', min: '0',
+      value: config[key] != null ? String(config[key]) : '' });
+    return { input, node: h('div', { class: 'field' },
+      h('label', null, label),
+      input,
+      hint ? h('div', { class: 'help' }, hint) : null,
+    ), key };
+  }
+
+  const fields = [
+    makeNumField('fanout_depth', 'fanout_depth', 'Peer search recursion depth (0, 1, or 2).'),
+    makeNumField('search_rate_limit_per_minute', 'search_rate_limit_per_minute', 'Anon /api/search requests per IP per minute.'),
+    makeNumField('crawl_default_recrawl_interval_secs', 'crawl_default_recrawl_interval_secs', 'Default recrawl interval for new targets.'),
+    makeNumField('crawl_politeness_delay_ms', 'crawl_politeness_delay_ms', 'Min delay between fetches to the same host.'),
+    makeNumField('max_concurrent_crawls', 'max_concurrent_crawls', 'Maximum simultaneous in-flight fetches.'),
+  ];
+
+  const saveCfgBtn = h('button', { class: 'primary' }, 'Save runtime config');
+  const cfgMsg = h('div', { class: 'status-msg' });
+  saveCfgBtn.addEventListener('click', async () => {
+    const body = {};
+    for (const f of fields) {
+      const v = f.input.value;
+      if (v !== '') body[f.key] = parseInt(v, 10);
+    }
+    if (Object.keys(body).length === 0) {
+      cfgMsg.textContent = 'No fields to update.';
+      cfgMsg.className = 'status-msg error';
+      return;
+    }
+    saveCfgBtn.disabled = true;
+    try {
+      const updated = await apiJson('/api/admin/config', { method: 'PUT', body });
+      // Refresh local copy so subsequent edits see latest values
+      Object.assign(config, updated);
+      for (const f of fields) {
+        if (updated[f.key] != null) f.input.value = String(updated[f.key]);
+      }
+      cfgMsg.textContent = 'Saved.';
+      cfgMsg.className = 'status-msg success';
+      toast.ok('Runtime config saved.');
+    } catch (err) {
+      cfgMsg.textContent = 'Error: ' + err.body;
+      cfgMsg.className = 'status-msg error';
+    } finally { saveCfgBtn.disabled = false; }
+  });
+
+  root.appendChild(h('div', { class: 'card' },
+    h('h3', null, 'Runtime config'),
+    h('div', { class: 'card-hint' },
+      'Persisted across restarts. Hot-reloaded by the server. Leave a field at its current value to keep it unchanged.'),
+    h('div', { class: 'form-grid' }, fields.map(f => f.node)),
+    h('div', { class: 'form-actions' }, saveCfgBtn),
+    cfgMsg,
+  ));
+
+  mount(root);
+}
+
+// =======================================================================
+// Boot
+// =======================================================================
+updateTokenIndicator();
+router();
+</script>
+</body>
+</html>
