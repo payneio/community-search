@@ -51,6 +51,7 @@ pub struct PageResult {
 /// 5. **304 Not Modified** — update `last_crawled_at`/`last_status`, skip re-index.
 /// 6. **Non-2xx status** — record the status, preserve prior cache headers.
 /// 7. **Fresh** — parse, hash, conditionally index, upsert DB, classify links.
+#[allow(clippy::too_many_arguments)]
 pub async fn crawl_page(
     url: &str,
     ctx: &PageContext,
@@ -58,6 +59,7 @@ pub async fn crawl_page(
     robots: &RobotsChecker,
     db: &Database,
     indexer_tx: &mpsc::Sender<IndexJob>,
+    indexing_inflight: &std::sync::atomic::AtomicI64,
     now_unix: i64,
 ) -> CrawlResult<PageResult> {
     // ── Step 1: Robots check ──────────────────────────────────────────────────
@@ -207,7 +209,13 @@ pub async fn crawl_page(
                 // await blocks the crawler, which is exactly the polite thing
                 // to do. A SendError means the indexer task has exited —
                 // there's nothing useful we can do besides surface it.
-                indexer_tx
+                //
+                // Increment the in-flight counter *before* the send so a
+                // concurrent `/api/admin/status` snapshot can't observe an
+                // already-queued job as zero-pending. The indexer's flush
+                // decrements by the journal length once Tantivy commits.
+                indexing_inflight.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if let Err(e) = indexer_tx
                     .send(IndexJob {
                         collection_name: ctx.collection_name.clone(),
                         url: index_url.clone(),
@@ -218,7 +226,11 @@ pub async fn crawl_page(
                         content_hash: content_hash.clone(),
                     })
                     .await
-                    .map_err(|_| CrawlError::Other("indexer channel closed".into()))?;
+                {
+                    // Send failed → job is not actually in flight; roll back.
+                    indexing_inflight.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                    return Err(CrawlError::Other(format!("indexer channel closed: {e}")));
+                }
             }
 
             // Persist updated crawl state. `indexed_content_hash` is NOT

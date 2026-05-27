@@ -314,8 +314,8 @@ async fn remove_empty_target_does_not_queue_delete_batch() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let got = tokio::time::timeout(std::time::Duration::from_millis(200), app.delete_rx.recv())
-        .await;
+    let got =
+        tokio::time::timeout(std::time::Duration::from_millis(200), app.delete_rx.recv()).await;
     assert!(
         got.is_err(),
         "removing a target with no pages must not push a batch; got: {got:?}"

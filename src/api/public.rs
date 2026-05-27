@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::{Arc, Mutex};
 
 use axum::{
@@ -100,6 +101,24 @@ pub struct AppState {
     /// Without this, deleting a crawl target leaves its pages searchable
     /// until the index is rebuilt.
     pub indexer_delete_tx: tokio::sync::mpsc::Sender<Vec<String>>,
+    /// Sender used by the admin import handler to enqueue documents on the
+    /// same single-writer Tantivy channel that the crawler uses. Tantivy
+    /// allows only one `IndexWriter` per process; this channel funnels all
+    /// upserts through the dedicated indexer task spawned by the scheduler.
+    pub indexer_upsert_tx: tokio::sync::mpsc::Sender<crate::index::indexer::IndexJob>,
+    /// When `true`, the scheduler skips dispatching new crawl-target tasks.
+    /// In-flight targets finish their current BFS — pause is "no new
+    /// crawls," not "stop now." Exposed so the admin endpoint can flip it
+    /// before running an export.
+    ///
+    /// Transient: not persisted across restarts.
+    pub crawl_paused: Arc<AtomicBool>,
+    /// Live counter of `IndexJob`s in flight: incremented when a job is
+    /// pushed onto `indexer_upsert_tx`, decremented once the indexer
+    /// commits its containing batch to Tantivy. Reaches zero exactly when
+    /// the indexer has drained everything queued. Used by the status
+    /// endpoint as the source of truth for "is it safe to export."
+    pub indexing_inflight: Arc<AtomicI64>,
 }
 
 // Manual Debug impl: Connection and Searcher do not implement Debug.
@@ -374,6 +393,9 @@ impl AppState {
                 .expect("build reqwest client"),
             crawler_user_agent: "community-search-test/0.1".into(),
             indexer_delete_tx: crate::test_support::sink_indexer_delete_tx(),
+            indexer_upsert_tx: crate::test_support::sink_indexer_upsert_tx(),
+            crawl_paused: Arc::new(AtomicBool::new(false)),
+            indexing_inflight: Arc::new(AtomicI64::new(0)),
         }
     }
 }
@@ -446,6 +468,9 @@ mod tests {
                 .expect("build reqwest client"),
             crawler_user_agent: "community-search-test/0.1".into(),
             indexer_delete_tx: crate::test_support::sink_indexer_delete_tx(),
+            indexer_upsert_tx: crate::test_support::sink_indexer_upsert_tx(),
+            crawl_paused: Arc::new(AtomicBool::new(false)),
+            indexing_inflight: Arc::new(AtomicI64::new(0)),
         }
     }
 

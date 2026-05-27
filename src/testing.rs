@@ -123,6 +123,9 @@ impl TestApp {
                 .expect("build reqwest client"),
             crawler_user_agent: "community-search-test/0.1".into(),
             indexer_delete_tx: crate::test_support::sink_indexer_delete_tx(),
+            indexer_upsert_tx: crate::test_support::sink_indexer_upsert_tx(),
+            crawl_paused: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            indexing_inflight: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
         };
 
         // ── 6. Router + TcpListener + graceful shutdown via oneshot ───────────

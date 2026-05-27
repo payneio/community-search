@@ -66,6 +66,9 @@ async fn spawn_test_server_with_admin() -> AdminTestServer {
         http_client,
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: community_search::test_support::sink_indexer_delete_tx(),
+        indexer_upsert_tx: community_search::test_support::sink_indexer_upsert_tx(),
+        crawl_paused: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     let router = community_search::api::build_router(state);

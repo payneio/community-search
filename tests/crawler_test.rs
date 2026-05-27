@@ -101,6 +101,7 @@ async fn end_to_end_single_page_indexes_and_records_outlink() {
     }
 
     let tx = spawn_sink_indexer();
+    let inflight = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
 
     let fetcher = make_fetcher();
     let robots = make_robots();
@@ -113,7 +114,7 @@ async fn end_to_end_single_page_indexes_and_records_outlink() {
         collection_name: "test-collection".to_string(),
     };
 
-    let result = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, 1_000_000)
+    let result = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 1_000_000)
         .await
         .expect("crawl_page should succeed");
 
@@ -132,7 +133,10 @@ async fn end_to_end_single_page_indexes_and_records_outlink() {
     let conn = db.conn();
     let outlink_count = outlink_hosts::count_for_collection(&conn, "1")
         .expect("count_for_collection should succeed");
-    assert_eq!(outlink_count, 1, "should have exactly 1 outlink host recorded");
+    assert_eq!(
+        outlink_count, 1,
+        "should have exactly 1 outlink host recorded"
+    );
 
     let row = crawled_pages::get_by_url(&conn, "1", &page_url)
         .expect("get_by_url should succeed")
@@ -208,6 +212,7 @@ async fn second_crawl_with_304_skips_indexing() {
     }
 
     let tx = spawn_sink_indexer();
+    let inflight = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
 
     let fetcher = make_fetcher();
     let robots = make_robots();
@@ -221,7 +226,7 @@ async fn second_crawl_with_304_skips_indexing() {
     };
 
     // First crawl — should index the page and store etag "v1"
-    let r1 = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, 1_000_000)
+    let r1 = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 1_000_000)
         .await
         .expect("first crawl_page should succeed");
 
@@ -238,7 +243,7 @@ async fn second_crawl_with_304_skips_indexing() {
     }
 
     // Second crawl — server returns 304, should skip re-indexing
-    let r2 = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, 2_000_000)
+    let r2 = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 2_000_000)
         .await
         .expect("second crawl_page should succeed");
 
@@ -332,6 +337,7 @@ async fn driver_crawls_multiple_pages_in_prefix() {
     }
 
     let tx = spawn_sink_indexer();
+    let inflight = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
 
     let fetcher = make_fetcher();
     let robots = make_robots();
@@ -350,7 +356,7 @@ async fn driver_crawls_multiple_pages_in_prefix() {
     };
 
     let stats = crawl_target(
-        &seed_url, &ctx, &fetcher, &robots, &db, &tx, &config, 1_000_000,
+        &seed_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, &config, 1_000_000,
     )
     .await
     .expect("crawl_target should succeed");
@@ -418,6 +424,7 @@ async fn scheduler_run_one_target_updates_last_crawled_at() {
         robots: Arc::new(make_robots()),
         db: Arc::clone(&db),
         indexer_tx: spawn_sink_indexer(),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
         driver_config: Arc::new(DriverConfig {
             politeness_delay: Duration::from_millis(0),
             max_pages_per_run: 10,

@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 use crate::db::ranking_config::{self, RankingConfig};
-use crate::index::reader::{RawHitWithSnippet, Searcher};
+use crate::index::reader::{ExportedDoc, RawHitWithSnippet, Searcher};
 use crate::search::ranking::{self, ScoreInputs};
 use crate::search::result::SearchResult;
 
@@ -22,6 +22,12 @@ impl SearchService {
     /// Create a new `SearchService` from shared index and database handles.
     pub fn new(index: Arc<Searcher>, db: Arc<Mutex<Connection>>) -> Self {
         Self { index, db }
+    }
+
+    /// Return every stored document in the local index. Used by the admin
+    /// export handler. See `Searcher::export_all_docs` for the cost profile.
+    pub fn export_all_docs(&self) -> Result<Vec<ExportedDoc>> {
+        self.index.export_all_docs()
     }
 
     /// Search the local index, apply ranking, and return up to `limit` results.

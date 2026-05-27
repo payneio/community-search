@@ -69,22 +69,37 @@ async fn main() -> Result<()> {
         .context("failed to open/create search index")?;
 
     let index_path = cfg.data_dir.join("index");
+    let crawl_paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let indexing_inflight = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
     let scheduler = community_search::crawler::scheduler::Scheduler {
         config: std::sync::Arc::new(cfg.clone()),
         db: std::sync::Arc::new(db),
         index: std::sync::Arc::new(index.clone()),
         index_path,
+        paused: std::sync::Arc::clone(&crawl_paused),
+        indexing_inflight: std::sync::Arc::clone(&indexing_inflight),
     };
 
     // Admin-side delete channel: the admin crawl-target Remove handler
     // pushes URL batches in here so the indexer can drop the corresponding
     // documents from Tantivy after the DB cascade. Sized small — admin
     // removals are infrequent and each batch may contain many URLs.
-    let (indexer_delete_tx, indexer_delete_rx) =
-        tokio::sync::mpsc::channel::<Vec<String>>(32);
+    let (indexer_delete_tx, indexer_delete_rx) = tokio::sync::mpsc::channel::<Vec<String>>(32);
 
-    let _sched_handle =
-        scheduler.spawn(std::time::Duration::from_secs(60), indexer_delete_rx);
+    // Indexer upsert channel: shared between crawler tasks (the primary
+    // source) and the admin import handler. Created up here so a clone of
+    // the sender can be stored in `AppState`.
+    let (indexer_upsert_tx, indexer_upsert_rx) =
+        tokio::sync::mpsc::channel::<community_search::index::indexer::IndexJob>(
+            community_search::index::indexer::CHANNEL_CAPACITY,
+        );
+
+    let _sched_handle = scheduler.spawn(
+        std::time::Duration::from_secs(60),
+        indexer_upsert_tx.clone(),
+        indexer_upsert_rx,
+        indexer_delete_rx,
+    );
 
     // Build the search infrastructure.
     //
@@ -157,6 +172,9 @@ async fn main() -> Result<()> {
         http_client,
         crawler_user_agent: cfg.crawler_user_agent.clone(),
         indexer_delete_tx,
+        indexer_upsert_tx,
+        crawl_paused,
+        indexing_inflight,
     };
     let _health_task = community_search::federation::health::spawn_health_check_task(
         state.db.clone(),

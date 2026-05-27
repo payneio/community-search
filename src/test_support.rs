@@ -28,6 +28,16 @@ pub fn sink_indexer_delete_tx() -> mpsc::Sender<Vec<String>> {
     tokio::spawn(async move { while rx.recv().await.is_some() {} });
     tx
 }
+
+/// Same idea as [`sink_indexer_delete_tx`] but for the upsert channel:
+/// returns a connected `Sender<IndexJob>` whose messages are silently
+/// drained, so tests that don't actually run the indexer can still
+/// construct `AppState`.
+pub fn sink_indexer_upsert_tx() -> mpsc::Sender<crate::index::indexer::IndexJob> {
+    let (tx, mut rx) = mpsc::channel::<crate::index::indexer::IndexJob>(8);
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+    tx
+}
 use crate::api::rate_limit::{PeerIpCache, RateLimitConfig};
 use crate::federation::peer::{HttpPeerClient, PeerClient};
 use crate::index::{reader::Searcher, schema};
@@ -89,6 +99,9 @@ pub fn test_router_with_search() -> Router {
             .expect("build reqwest client"),
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: sink_indexer_delete_tx(),
+        indexer_upsert_tx: sink_indexer_upsert_tx(),
+        crawl_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     crate::api::build_router(state)
@@ -136,6 +149,9 @@ pub fn test_router_full(token: &str) -> Router {
             .expect("build reqwest client"),
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: sink_indexer_delete_tx(),
+        indexer_upsert_tx: sink_indexer_upsert_tx(),
+        crawl_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     crate::api::build_router(state)
@@ -180,6 +196,9 @@ pub fn test_app(token: &str) -> TestApp {
             .expect("build reqwest client"),
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: sink_indexer_delete_tx(),
+        indexer_upsert_tx: sink_indexer_upsert_tx(),
+        crawl_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     TestApp {
@@ -237,6 +256,9 @@ pub fn test_app_with_delete_rx(token: &str) -> TestAppWithDeleteRx {
             .expect("build reqwest client"),
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: delete_tx,
+        indexer_upsert_tx: sink_indexer_upsert_tx(),
+        crawl_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     TestAppWithDeleteRx {
@@ -282,6 +304,9 @@ pub fn test_app_with_self_url(token: &str, self_url: &str) -> TestApp {
             .expect("build reqwest client"),
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: sink_indexer_delete_tx(),
+        indexer_upsert_tx: sink_indexer_upsert_tx(),
+        crawl_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     TestApp {
@@ -409,6 +434,9 @@ pub async fn spawn_test_server() -> TestServer {
             .expect("build reqwest client"),
         crawler_user_agent: "community-search-test/0.1".into(),
         indexer_delete_tx: sink_indexer_delete_tx(),
+        indexer_upsert_tx: sink_indexer_upsert_tx(),
+        crawl_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        indexing_inflight: Arc::new(std::sync::atomic::AtomicI64::new(0)),
     };
 
     let router = crate::api::build_router(state);

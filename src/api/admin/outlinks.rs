@@ -50,13 +50,16 @@ async fn list_outlinks(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
 ) -> Result<Response, (StatusCode, String)> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "db mutex poisoned".into()))?;
+    let conn = state.db.lock().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "db mutex poisoned".into(),
+        )
+    })?;
 
-    let rows = outlink_hosts::list_pending(&conn, params.collection_id, params.limit, params.offset)
-        .map_err(|e: anyhow::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let rows =
+        outlink_hosts::list_pending(&conn, params.collection_id, params.limit, params.offset)
+            .map_err(|e: anyhow::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(ListResponse { outlinks: rows }).into_response())
 }
@@ -73,10 +76,12 @@ async fn promote_outlink(
     Path(id): Path<i64>,
     Json(body): Json<PromoteBody>,
 ) -> Result<Response, (StatusCode, String)> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "db mutex poisoned".into()))?;
+    let conn = state.db.lock().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "db mutex poisoned".into(),
+        )
+    })?;
 
     let row = outlink_hosts::find(&conn, id)
         .map_err(|e: anyhow::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -120,10 +125,12 @@ async fn dismiss_outlink(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
-    let conn = state
-        .db
-        .lock()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "db mutex poisoned".into()))?;
+    let conn = state.db.lock().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "db mutex poisoned".into(),
+        )
+    })?;
 
     let updated = outlink_hosts::mark_dismissed(&conn, id)
         .map_err(|e: anyhow::Error| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

@@ -2047,7 +2047,147 @@ async function viewSettings() {
     cfgMsg,
   ));
 
+  // -------- Backup & restore --------
+  root.appendChild(buildBackupCard());
+
   mount(root);
+}
+
+// =======================================================================
+// Backup & restore (export / import + pause crawler)
+// =======================================================================
+function buildBackupCard() {
+  const pausedLabel = h('span', null, '…');
+  const pendingLabel = h('span', null, '…');
+  const pauseBtn = h('button', null, 'Pause crawler');
+  const resumeBtn = h('button', null, 'Resume crawler');
+  const refreshBtn = h('button', null, 'Refresh');
+  const exportBtn = h('button', { class: 'primary' }, 'Download export');
+  const fileInput = h('input', { type: 'file', accept: 'application/json' });
+  const importBtn = h('button', { class: 'primary' }, 'Upload & import');
+  const statusMsg = h('div', { class: 'status-msg' });
+
+  async function refresh() {
+    try {
+      const s = await resources.status();
+      pausedLabel.textContent = s.crawl_paused ? 'paused' : 'running';
+      pausedLabel.style.color = s.crawl_paused ? '#a55' : '';
+      pendingLabel.textContent = String(s.indexing_pending_count ?? 0);
+      const safe = s.crawl_paused && (s.indexing_pending_count ?? 0) === 0;
+      exportBtn.disabled = !safe;
+      exportBtn.title = safe
+        ? ''
+        : 'Pause the crawler and wait for indexing_pending_count to reach 0 first.';
+    } catch (err) {
+      pausedLabel.textContent = 'unknown';
+      pendingLabel.textContent = 'unknown';
+    }
+  }
+
+  async function setPaused(paused) {
+    try {
+      await apiJson('/api/admin/crawl', { method: 'POST', body: { paused } });
+      toast.ok(paused ? 'Crawler paused.' : 'Crawler resumed.');
+      await refresh();
+    } catch (err) {
+      toast.err('Could not toggle: ' + (err.body || err.message));
+    }
+  }
+  pauseBtn.addEventListener('click', () => setPaused(true));
+  resumeBtn.addEventListener('click', () => setPaused(false));
+  refreshBtn.addEventListener('click', refresh);
+
+  exportBtn.addEventListener('click', async () => {
+    exportBtn.disabled = true;
+    statusMsg.textContent = 'Building export…';
+    statusMsg.className = 'status-msg';
+    try {
+      const r = await api('/api/admin/export');
+      const blob = await r.blob();
+      const cd = r.headers.get('content-disposition') || '';
+      const m = cd.match(/filename="([^"]+)"/);
+      const filename = m ? m[1] : 'community-search-export.json';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      statusMsg.textContent = 'Downloaded ' + filename + ' (' + fmtBytes(blob.size) + ').';
+      statusMsg.className = 'status-msg success';
+    } catch (err) {
+      statusMsg.textContent = 'Export failed: ' + (err.body || err.message);
+      statusMsg.className = 'status-msg error';
+    } finally { exportBtn.disabled = false; refresh(); }
+  });
+
+  importBtn.addEventListener('click', async () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) {
+      statusMsg.textContent = 'Pick a JSON export file first.';
+      statusMsg.className = 'status-msg error';
+      return;
+    }
+    importBtn.disabled = true;
+    statusMsg.textContent = 'Uploading ' + f.name + ' (' + fmtBytes(f.size) + ')…';
+    statusMsg.className = 'status-msg';
+    try {
+      const text = await f.text();
+      const report = await apiJson('/api/admin/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: text,
+      });
+      const parts = [
+        report.collections_imported + ' collections imported',
+        report.collections_skipped + ' skipped',
+        report.crawl_targets_imported + ' crawl targets',
+        report.crawled_pages_imported + ' crawled pages',
+        report.documents_queued + ' documents queued for indexing',
+        report.node_peers_imported + ' node peers',
+        report.collection_peers_imported + ' collection peers',
+      ];
+      statusMsg.textContent = 'Imported: ' + parts.join(', ') + '.';
+      statusMsg.className = 'status-msg success';
+      toast.ok('Import complete.');
+    } catch (err) {
+      statusMsg.textContent = 'Import failed: ' + (err.body || err.message);
+      statusMsg.className = 'status-msg error';
+    } finally { importBtn.disabled = false; }
+  });
+
+  refresh();
+
+  return h('div', { class: 'card' },
+    h('h3', null, 'Backup & restore'),
+    h('div', { class: 'card-hint' },
+      'Pause the crawler, wait until pending indexing reaches 0, then download an export to ship to another instance. Import is additive: existing collections (matched by name) are skipped.'),
+    h('div', { class: 'form-grid' },
+      h('div', { class: 'field' },
+        h('label', null, 'Crawler'),
+        h('div', { class: 'row' }, pauseBtn, resumeBtn, refreshBtn,
+          h('span', { style: 'margin-left:0.5rem' }, 'state: ', pausedLabel)),
+      ),
+      h('div', { class: 'field' },
+        h('label', null, 'Indexing pending'),
+        h('div', null, pendingLabel,
+          h('div', { class: 'help' },
+            'Crawled pages whose Tantivy commit is still in flight. Reach 0 before exporting.')),
+      ),
+    ),
+    h('div', { class: 'form-actions' }, exportBtn),
+    h('hr', { style: 'border:none;border-top:1px solid #ddd;margin:1rem 0' }),
+    h('div', { class: 'field' },
+      h('label', null, 'Import file'),
+      fileInput,
+      h('div', { class: 'help' },
+        'Upload a JSON file produced by Download export. Collections that already exist locally are skipped.'),
+    ),
+    h('div', { class: 'form-actions' }, importBtn),
+    statusMsg,
+  );
 }
 
 // =======================================================================

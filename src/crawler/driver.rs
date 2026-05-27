@@ -63,6 +63,7 @@ pub async fn crawl_target(
     robots: &RobotsChecker,
     db: &Database,
     indexer_tx: &mpsc::Sender<IndexJob>,
+    indexing_inflight: &std::sync::atomic::AtomicI64,
     config: &DriverConfig,
     now_unix: i64,
 ) -> CrawlResult<DriverStats> {
@@ -101,7 +102,18 @@ pub async fn crawl_target(
     while !queue.is_empty() && stats.pages_fetched < config.max_pages_per_run {
         let url = queue.pop_front().expect("queue non-empty (checked above)");
 
-        match crawl_page(&url, ctx, fetcher, robots, db, indexer_tx, now_unix).await {
+        match crawl_page(
+            &url,
+            ctx,
+            fetcher,
+            robots,
+            db,
+            indexer_tx,
+            indexing_inflight,
+            now_unix,
+        )
+        .await
+        {
             Ok(result) => {
                 consecutive_429s = 0;
                 stats.pages_fetched += 1;
@@ -278,9 +290,12 @@ mod tests {
             collection_name: "Test".to_string(),
         };
 
-        let stats = crawl_target(&seed_url, &ctx, &fetcher, &robots, &db, &tx, &config, 0)
-            .await
-            .expect("crawl_target should return Ok even when aborting due to 429");
+        let inflight = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
+        let stats = crawl_target(
+            &seed_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, &config, 0,
+        )
+        .await
+        .expect("crawl_target should return Ok even when aborting due to 429");
 
         assert_eq!(stats.pages_fetched, 0, "all 429s → no successful fetches");
         assert_eq!(
@@ -342,6 +357,8 @@ mod tests {
         }
         let index = Arc::new(Index::create_in_ram(schema::build()));
 
+        let inflight = Arc::new(std::sync::atomic::AtomicI64::new(0));
+
         LocalSet::new()
             .run_until(async {
                 let (tx, rx) = mpsc::channel::<IndexJob>(CHANNEL_CAPACITY);
@@ -351,6 +368,7 @@ mod tests {
                     del_rx,
                     Arc::clone(&index),
                     Arc::clone(&db),
+                    Arc::clone(&inflight),
                 ));
 
                 let fetcher = Fetcher::new("TestBot/1.0", Duration::from_secs(10)).unwrap();
@@ -373,6 +391,7 @@ mod tests {
                     &robots,
                     &db,
                     &tx,
+                    &inflight,
                     &config,
                     1_700_000_000,
                 )
@@ -465,6 +484,7 @@ mod tests {
         // Sink consumer — this test measures wall-clock, not the journal.
         let (tx, mut rx) = mpsc::channel::<IndexJob>(CHANNEL_CAPACITY);
         tokio::spawn(async move { while rx.recv().await.is_some() {} });
+        let inflight = Arc::new(std::sync::atomic::AtomicI64::new(0));
 
         LocalSet::new()
             .run_until(async move {
@@ -491,6 +511,7 @@ mod tests {
                     let fetcher = Arc::clone(&fetcher);
                     let robots = Arc::clone(&robots);
                     let config = Arc::clone(&config);
+                    let inflight = Arc::clone(&inflight);
                     let seed = slow_url.clone();
                     tokio::task::spawn_local(async move {
                         crawl_target(
@@ -500,6 +521,7 @@ mod tests {
                             &robots,
                             &db,
                             &tx,
+                            &inflight,
                             &config,
                             1_700_000_000,
                         )
@@ -512,6 +534,7 @@ mod tests {
                     let fetcher = Arc::clone(&fetcher);
                     let robots = Arc::clone(&robots);
                     let config = Arc::clone(&config);
+                    let inflight = Arc::clone(&inflight);
                     let seed = fast_url.clone();
                     tokio::task::spawn_local(async move {
                         crawl_target(
@@ -521,6 +544,7 @@ mod tests {
                             &robots,
                             &db,
                             &tx,
+                            &inflight,
                             &config,
                             1_700_000_000,
                         )
@@ -609,6 +633,8 @@ mod tests {
         }
         let index = Arc::new(Index::create_in_ram(schema::build()));
 
+        let inflight = Arc::new(std::sync::atomic::AtomicI64::new(0));
+
         LocalSet::new()
             .run_until(async {
                 let (tx, rx) = mpsc::channel::<IndexJob>(CHANNEL_CAPACITY);
@@ -618,6 +644,7 @@ mod tests {
                     del_rx,
                     Arc::clone(&index),
                     Arc::clone(&db),
+                    Arc::clone(&inflight),
                 ));
 
                 let fetcher = Fetcher::new("TestBot/1.0", Duration::from_secs(10)).unwrap();
@@ -640,6 +667,7 @@ mod tests {
                     &robots,
                     &db,
                     &tx,
+                    &inflight,
                     &config,
                     1_700_000_000,
                 )
@@ -699,6 +727,8 @@ mod tests {
         }
         let index = Arc::new(Index::create_in_ram(schema::build()));
 
+        let inflight = Arc::new(std::sync::atomic::AtomicI64::new(0));
+
         LocalSet::new()
             .run_until(async {
                 let (tx, rx) = mpsc::channel::<IndexJob>(CHANNEL_CAPACITY);
@@ -708,6 +738,7 @@ mod tests {
                     del_rx,
                     Arc::clone(&index),
                     Arc::clone(&db),
+                    Arc::clone(&inflight),
                 ));
 
                 let fetcher = Fetcher::new("TestBot/1.0", Duration::from_secs(10)).unwrap();
@@ -730,6 +761,7 @@ mod tests {
                     &robots,
                     &db,
                     &tx,
+                    &inflight,
                     &config,
                     1_700_000_000,
                 )

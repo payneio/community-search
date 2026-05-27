@@ -200,9 +200,9 @@ pub fn is_blacklisted_outlink_host(url: &str) -> bool {
         return false;
     };
     let host = host.to_ascii_lowercase();
-    BLACKLISTED_OUTLINK_HOSTS.iter().any(|target| {
-        host == *target || host.ends_with(&format!(".{target}"))
-    })
+    BLACKLISTED_OUTLINK_HOSTS
+        .iter()
+        .any(|target| host == *target || host.ends_with(&format!(".{target}")))
 }
 
 #[cfg(test)]
@@ -242,9 +242,8 @@ mod tests {
 
     #[test]
     fn normalize_strips_tracking_params() {
-        let result = normalize_url(
-            "https://example.com/x?utm_source=twitter&utm_medium=social&q=hello",
-        );
+        let result =
+            normalize_url("https://example.com/x?utm_source=twitter&utm_medium=social&q=hello");
         assert_eq!(result, Some("https://example.com/x?q=hello".to_string()));
     }
 
@@ -319,7 +318,9 @@ mod tests {
     #[test]
     fn blacklist_matches_exact_host() {
         assert!(is_blacklisted_outlink_host("https://facebook.com/sharer"));
-        assert!(is_blacklisted_outlink_host("https://twitter.com/intent/tweet"));
+        assert!(is_blacklisted_outlink_host(
+            "https://twitter.com/intent/tweet"
+        ));
         assert!(is_blacklisted_outlink_host("https://vk.com/share.php"));
     }
 
@@ -327,7 +328,9 @@ mod tests {
     fn blacklist_matches_subdomain() {
         assert!(is_blacklisted_outlink_host("https://www.facebook.com/x"));
         assert!(is_blacklisted_outlink_host("https://m.facebook.com/y"));
-        assert!(is_blacklisted_outlink_host("https://business.linkedin.com/z"));
+        assert!(is_blacklisted_outlink_host(
+            "https://business.linkedin.com/z"
+        ));
     }
 
     #[test]
@@ -338,7 +341,9 @@ mod tests {
     #[test]
     fn blacklist_does_not_match_unrelated_hosts() {
         assert!(!is_blacklisted_outlink_host("https://example.com/x"));
-        assert!(!is_blacklisted_outlink_host("https://news.ycombinator.com/"));
+        assert!(!is_blacklisted_outlink_host(
+            "https://news.ycombinator.com/"
+        ));
     }
 
     /// A blacklisted token must not match a substring inside a different
@@ -346,7 +351,9 @@ mod tests {
     #[test]
     fn blacklist_rejects_substring_lookalikes() {
         assert!(!is_blacklisted_outlink_host("https://notfacebook.com/x"));
-        assert!(!is_blacklisted_outlink_host("https://twitter.com.evil.example/x"));
+        assert!(!is_blacklisted_outlink_host(
+            "https://twitter.com.evil.example/x"
+        ));
     }
 
     #[test]
@@ -357,10 +364,14 @@ mod tests {
     #[test]
     fn blacklist_matches_new_cdn_and_video_entries() {
         // CDN/avatar/video entries added in the second blacklist pass.
-        assert!(is_blacklisted_outlink_host("https://gravatar.com/avatar/abc"));
+        assert!(is_blacklisted_outlink_host(
+            "https://gravatar.com/avatar/abc"
+        ));
         assert!(is_blacklisted_outlink_host("https://i0.wp.com/img.png"));
         assert!(is_blacklisted_outlink_host("https://substackcdn.com/image"));
-        assert!(is_blacklisted_outlink_host("https://www.youtube.com/watch?v=x"));
+        assert!(is_blacklisted_outlink_host(
+            "https://www.youtube.com/watch?v=x"
+        ));
         assert!(is_blacklisted_outlink_host("https://youtu.be/abc"));
     }
 
@@ -368,7 +379,10 @@ mod tests {
 
     #[test]
     fn host_of_strips_leading_www() {
-        assert_eq!(host_of("https://www.example.com/x"), Some("example.com".into()));
+        assert_eq!(
+            host_of("https://www.example.com/x"),
+            Some("example.com".into())
+        );
         assert_eq!(host_of("https://example.com/x"), Some("example.com".into()));
     }
 
@@ -376,13 +390,22 @@ mod tests {
     fn host_of_does_not_strip_other_subdomains() {
         // Only the literal "www." prefix is collapsed; other subdomains are
         // typically distinct sites (en.wikipedia.org ≠ wikipedia.org).
-        assert_eq!(host_of("https://m.example.com/x"), Some("m.example.com".into()));
-        assert_eq!(host_of("https://en.wikipedia.org/x"), Some("en.wikipedia.org".into()));
+        assert_eq!(
+            host_of("https://m.example.com/x"),
+            Some("m.example.com".into())
+        );
+        assert_eq!(
+            host_of("https://en.wikipedia.org/x"),
+            Some("en.wikipedia.org".into())
+        );
     }
 
     #[test]
     fn host_of_lowercases() {
-        assert_eq!(host_of("https://WWW.Example.COM/x"), Some("example.com".into()));
+        assert_eq!(
+            host_of("https://WWW.Example.COM/x"),
+            Some("example.com".into())
+        );
     }
 
     #[test]

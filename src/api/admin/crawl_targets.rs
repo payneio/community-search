@@ -130,8 +130,13 @@ async fn handle_crawl_targets(
                 ));
             }
 
-            let record = add(&conn, collection_id, &effective_prefix, recrawl_interval_secs)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let record = add(
+                &conn,
+                collection_id,
+                &effective_prefix,
+                recrawl_interval_secs,
+            )
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             Ok(Json(record).into_response())
         }
 

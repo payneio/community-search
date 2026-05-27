@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,7 +21,7 @@ use crate::crawler::{
     CrawlResult,
 };
 use crate::db::Database;
-use crate::index::indexer::{self, IndexJob, CHANNEL_CAPACITY};
+use crate::index::indexer::{self, IndexJob};
 use crate::index::size::{check_capacity, index_dir_size_bytes};
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -89,6 +90,11 @@ pub struct TaskCtx {
     pub robots: Arc<RobotsChecker>,
     pub db: Arc<Database>,
     pub indexer_tx: mpsc::Sender<IndexJob>,
+    /// Counter incremented on every successful `indexer_tx.send`. The
+    /// indexer task decrements it after each successful commit. Shared
+    /// with `AppState::indexing_inflight` so the status endpoint and the
+    /// admin UI can wait for the queue to drain.
+    pub indexing_inflight: Arc<AtomicI64>,
     pub driver_config: Arc<DriverConfig>,
 }
 
@@ -127,6 +133,7 @@ pub async fn run_one_target(target: &DueTarget, ctx: &TaskCtx, now_unix: i64) ->
         &ctx.robots,
         &ctx.db,
         &ctx.indexer_tx,
+        &ctx.indexing_inflight,
         &driver_config,
         now_unix,
     )
@@ -161,6 +168,13 @@ pub struct Scheduler {
     pub db: Arc<Database>,
     pub index: Arc<tantivy::Index>,
     pub index_path: PathBuf,
+    /// When `true`, [`Scheduler::tick_once`] skips dispatching new
+    /// per-target tasks. Shared with the admin pause/resume endpoint via
+    /// `AppState::crawl_paused`.
+    pub paused: Arc<AtomicBool>,
+    /// Shared counter of `IndexJob`s currently in flight (queue + writer
+    /// buffer). Cloned into [`TaskCtx`] and the indexer task.
+    pub indexing_inflight: Arc<AtomicI64>,
 }
 
 impl Scheduler {
@@ -178,6 +192,11 @@ impl Scheduler {
     ///    `crawl_target` BFS. They share `db`, `fetcher`, `robots`, and the
     ///    indexer `Sender` via `TaskCtx` clones.
     ///
+    /// `indexer_upsert_tx` is cloned for crawl tasks (`TaskCtx::indexer_tx`)
+    /// and its receiving end is owned by the indexer task spawned here.
+    /// The sender also lives in `AppState` so the admin import handler can
+    /// queue documents through the same single-writer channel.
+    ///
     /// `indexer_delete_rx` is the receiving end of the admin-side delete
     /// channel; its `Sender` lives in `AppState` and is used by the
     /// crawl-target Remove handler to drop the corresponding documents
@@ -193,6 +212,8 @@ impl Scheduler {
     pub fn spawn(
         self,
         tick: Duration,
+        indexer_upsert_tx: mpsc::Sender<IndexJob>,
+        indexer_upsert_rx: mpsc::Receiver<IndexJob>,
         indexer_delete_rx: mpsc::Receiver<Vec<String>>,
     ) -> JoinHandle<()> {
         std::thread::Builder::new()
@@ -205,7 +226,12 @@ impl Scheduler {
                 rt.block_on(async move {
                     let local = LocalSet::new();
                     local
-                        .run_until(self.run_loop(tick, indexer_delete_rx))
+                        .run_until(self.run_loop(
+                            tick,
+                            indexer_upsert_tx,
+                            indexer_upsert_rx,
+                            indexer_delete_rx,
+                        ))
                         .await;
                 });
             })
@@ -219,20 +245,27 @@ impl Scheduler {
     /// of the process so the indexer's `rx.recv()` never returns `None`
     /// during normal operation. Spawns the indexer task once on the
     /// surrounding `LocalSet`; ticks every `tick` to dispatch crawls.
-    async fn run_loop(self, tick: Duration, indexer_delete_rx: mpsc::Receiver<Vec<String>>) {
-        let (tx, rx) = mpsc::channel::<IndexJob>(CHANNEL_CAPACITY);
+    async fn run_loop(
+        self,
+        tick: Duration,
+        indexer_upsert_tx: mpsc::Sender<IndexJob>,
+        indexer_upsert_rx: mpsc::Receiver<IndexJob>,
+        indexer_delete_rx: mpsc::Receiver<Vec<String>>,
+    ) {
         let db_for_indexer = Arc::clone(&self.db);
         let index_for_indexer = Arc::clone(&self.index);
 
         // Spawn the indexer on the surrounding LocalSet. It exits when the
         // upsert channel closes; we hold `tx` for the loop's lifetime so
         // this only happens at process teardown.
+        let inflight_for_indexer = Arc::clone(&self.indexing_inflight);
         let _indexer = tokio::task::spawn_local(async move {
             if let Err(e) = indexer::run(
-                rx,
+                indexer_upsert_rx,
                 indexer_delete_rx,
                 index_for_indexer,
                 db_for_indexer,
+                inflight_for_indexer,
             )
             .await
             {
@@ -244,7 +277,8 @@ impl Scheduler {
             fetcher: Arc::new(self.build_fetcher()),
             robots: Arc::new(self.build_robots()),
             db: Arc::clone(&self.db),
-            indexer_tx: tx,
+            indexer_tx: indexer_upsert_tx,
+            indexing_inflight: Arc::clone(&self.indexing_inflight),
             driver_config: Arc::new(DriverConfig {
                 politeness_delay: Duration::from_millis(self.config.crawler_politeness_delay_ms),
                 max_pages_per_run: 1000,
@@ -285,6 +319,10 @@ impl Scheduler {
         ctx: &TaskCtx,
         running: &Rc<RefCell<HashSet<String>>>,
     ) -> CrawlResult<()> {
+        if self.paused.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
         let now_unix = chrono::Utc::now().timestamp();
 
         let used = index_dir_size_bytes(&self.index_path).unwrap_or(0);

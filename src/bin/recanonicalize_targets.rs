@@ -39,8 +39,11 @@ async fn main() -> anyhow::Result<()> {
     // Load all targets up front: we'll be doing HTTP calls inside the loop,
     // and we don't want to hold a prepared statement across awaits.
     let mut rows: Vec<(String, String)> = {
-        let mut stmt = conn.prepare("SELECT id, url_prefix FROM crawl_targets ORDER BY url_prefix")?;
-        let iter = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        let mut stmt =
+            conn.prepare("SELECT id, url_prefix FROM crawl_targets ORDER BY url_prefix")?;
+        let iter = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
         iter.collect::<Result<Vec<_>, _>>()?
     };
     rows.sort_by(|a, b| a.1.cmp(&b.1));
@@ -89,7 +92,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     println!();
-    println!("Done. {changed} rewritten, {unchanged} unchanged, {skipped_conflict} skipped (conflict).");
+    println!(
+        "Done. {changed} rewritten, {unchanged} unchanged, {skipped_conflict} skipped (conflict)."
+    );
     Ok(())
 }
 

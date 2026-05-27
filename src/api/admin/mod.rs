@@ -6,8 +6,10 @@
 pub mod collection_peers;
 pub mod collections;
 pub mod config;
+pub mod crawl_control;
 pub mod crawl_targets;
 pub mod discovered;
+pub mod export_import;
 pub mod gossip;
 pub mod nodes;
 pub mod outlinks;
@@ -45,8 +47,10 @@ pub fn admin_router(state: AppState) -> Router<AppState> {
         .merge(collection_peers::routes())
         .merge(collections::routes())
         .merge(config::routes())
+        .merge(crawl_control::routes())
         .merge(crawl_targets::routes())
         .merge(discovered::routes())
+        .merge(export_import::routes())
         .merge(gossip::routes())
         .merge(nodes::routes())
         .merge(outlinks::routes())

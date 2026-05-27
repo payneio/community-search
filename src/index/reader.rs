@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use tantivy::{
     collector::TopDocs,
-    query::{BooleanQuery, Occur, Query, QueryParser, TermQuery},
+    query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery},
     schema::{Field, IndexRecordOption, OwnedValue},
     snippet::SnippetGenerator,
     Index, IndexReader, ReloadPolicy, TantivyDocument, Term,
@@ -72,6 +72,19 @@ pub struct RawHit {
     pub body: String,
     pub timestamp: i64,
     pub bm25: f32,
+}
+
+// ---------------------------------------------------------------------------
+// ExportedDoc — one stored document retrieved by Searcher::export_all_docs.
+// Used by the admin export endpoint to ship the full index contents off-box.
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone)]
+pub struct ExportedDoc {
+    pub collection: String,
+    pub url: String,
+    pub title: String,
+    pub body: String,
+    pub indexed_at: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +195,35 @@ impl Searcher {
         }
 
         Ok(hits)
+    }
+
+    /// Iterate every stored document in the index and return its retrievable
+    /// fields. Used by the admin export endpoint.
+    ///
+    /// Tantivy has no public segment iterator, so this runs an `AllQuery`
+    /// with `TopDocs::with_limit(num_docs)` to fetch every doc address, then
+    /// resolves each through `searcher.doc(addr)`. Suitable for the moderate
+    /// indices a curated community-search instance is expected to hold; not
+    /// intended for indices in the millions-of-documents range.
+    pub fn export_all_docs(&self) -> Result<Vec<ExportedDoc>> {
+        let searcher = self.reader.searcher();
+        let total = searcher.num_docs() as usize;
+        if total == 0 {
+            return Ok(Vec::new());
+        }
+        let top = searcher.search(&AllQuery, &TopDocs::with_limit(total))?;
+        let mut out = Vec::with_capacity(top.len());
+        for (_, addr) in top {
+            let doc: TantivyDocument = searcher.doc(addr)?;
+            out.push(ExportedDoc {
+                collection: first_text(&doc, self.f_collection),
+                url: first_text(&doc, self.f_url),
+                title: first_text(&doc, self.f_title),
+                body: first_text(&doc, self.f_body),
+                indexed_at: first_i64(&doc, self.f_timestamp),
+            });
+        }
+        Ok(out)
     }
 
     /// Run a BM25 query against `[title, body]` and return HTML-highlighted snippets.
@@ -469,7 +511,11 @@ mod tests {
         let searcher = Searcher::open(index).unwrap();
 
         let hits = searcher.search("\"hello world\"", None, 10).unwrap();
-        assert_eq!(hits.len(), 1, "phrase should match only adjacent occurrence");
+        assert_eq!(
+            hits.len(),
+            1,
+            "phrase should match only adjacent occurrence"
+        );
         assert_eq!(hits[0].url, "a.example/phrase-1");
     }
 

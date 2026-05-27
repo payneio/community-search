@@ -131,8 +131,8 @@ impl Config {
         //      interpolated from CARGO_PKG_VERSION so it tracks releases.
         //   3. SELF_URL — fallback contact is this peer's own federation URL.
         //   4. No URL — bare bot marker.
-        let crawler_user_agent =
-            std::env::var("COMMUNITY_SEARCH_CRAWLER_USER_AGENT").unwrap_or_else(|_| {
+        let crawler_user_agent = std::env::var("COMMUNITY_SEARCH_CRAWLER_USER_AGENT")
+            .unwrap_or_else(|_| {
                 let version = env!("CARGO_PKG_VERSION");
                 let contact_url = std::env::var("COMMUNITY_SEARCH_CRAWLER_CONTACT_URL")
                     .ok()

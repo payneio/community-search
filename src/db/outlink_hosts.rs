@@ -136,22 +136,19 @@ pub fn list_pending(
          LIMIT ?2 OFFSET ?3",
     )?;
 
-    let rows = stmt.query_map(
-        rusqlite::params![collection_uuid, limit, offset],
-        |row| {
-            let examples_json: String = row.get(3)?;
-            let examples: Vec<OutlinkExample> =
-                serde_json::from_str(&examples_json).unwrap_or_default();
-            Ok(OutlinkHostRow {
-                id: row.get(0)?,
-                host: row.get(1)?,
-                link_count: row.get(2)?,
-                examples,
-                first_seen_at: row.get(4)?,
-                last_seen_at: row.get(5)?,
-            })
-        },
-    )?;
+    let rows = stmt.query_map(rusqlite::params![collection_uuid, limit, offset], |row| {
+        let examples_json: String = row.get(3)?;
+        let examples: Vec<OutlinkExample> =
+            serde_json::from_str(&examples_json).unwrap_or_default();
+        Ok(OutlinkHostRow {
+            id: row.get(0)?,
+            host: row.get(1)?,
+            link_count: row.get(2)?,
+            examples,
+            first_seen_at: row.get(4)?,
+            last_seen_at: row.get(5)?,
+        })
+    })?;
 
     let mut out = Vec::new();
     for r in rows {
@@ -210,16 +207,15 @@ pub fn mark_dismissed(conn: &Connection, id: i64) -> Result<bool> {
 /// - On malformed JSON, falls back to a single-element array containing
 ///   only the new example, so a corrupt row self-heals.
 fn merge_example(existing_json: &str, new_example: &OutlinkExample) -> String {
-    let mut examples: Vec<OutlinkExample> =
-        serde_json::from_str(existing_json).unwrap_or_default();
+    let mut examples: Vec<OutlinkExample> = serde_json::from_str(existing_json).unwrap_or_default();
 
     if examples.len() >= MAX_EXAMPLES {
         return existing_json.to_string();
     }
 
-    let dup = examples.iter().any(|e| {
-        e.source_url == new_example.source_url && e.target_url == new_example.target_url
-    });
+    let dup = examples
+        .iter()
+        .any(|e| e.source_url == new_example.source_url && e.target_url == new_example.target_url);
     if dup {
         return existing_json.to_string();
     }
@@ -438,7 +434,14 @@ mod tests {
         let col = seed_collection(&conn);
 
         // a: 1 hit, b: 3 hits, c: 2 hits  → expected order b, c, a
-        record_hit(&conn, &col, "a.com", &example("s", "https://a.com/", "t"), 100).unwrap();
+        record_hit(
+            &conn,
+            &col,
+            "a.com",
+            &example("s", "https://a.com/", "t"),
+            100,
+        )
+        .unwrap();
         for i in 0..3 {
             record_hit(
                 &conn,

@@ -258,9 +258,7 @@ mod tests {
         let target_path = "/destination";
         Mock::given(method("GET"))
             .and(path("/aliased"))
-            .respond_with(
-                ResponseTemplate::new(301).insert_header("location", target_path),
-            )
+            .respond_with(ResponseTemplate::new(301).insert_header("location", target_path))
             .mount(&server)
             .await;
 

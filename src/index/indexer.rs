@@ -13,6 +13,7 @@
 //! when commits stall, fetchers block on `tx.send().await`, which in turn
 //! slows the crawl — the polite response in every direction.
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -93,6 +94,7 @@ pub async fn run(
     mut delete_rx: mpsc::Receiver<Vec<String>>,
     index: Arc<tantivy::Index>,
     db: Arc<Database>,
+    inflight: Arc<AtomicI64>,
 ) -> CrawlResult<()> {
     let mut writer = IndexWriter::open(&index)?;
     let mut pending: usize = 0;
@@ -111,7 +113,7 @@ pub async fn run(
                     writer.upsert(&job.as_document())?;
                     pending += 1;
                     if pending >= BATCH_SIZE {
-                        flush(&mut writer, &db)?;
+                        flush(&mut writer, &db, &inflight)?;
                         pending = 0;
                         deadline = Instant::now() + MAX_AGE;
                     }
@@ -119,7 +121,7 @@ pub async fn run(
                 None => {
                     // All upsert senders dropped — graceful shutdown. Final
                     // flush so any tail of work is durable before we exit.
-                    flush(&mut writer, &db)?;
+                    flush(&mut writer, &db, &inflight)?;
                     return Ok(());
                 }
             },
@@ -136,7 +138,7 @@ pub async fn run(
                     // the next search no longer returns the removed docs.
                     // This also drains any buffered upserts in the same
                     // commit — the journal still advances correctly.
-                    flush(&mut writer, &db)?;
+                    flush(&mut writer, &db, &inflight)?;
                     pending = 0;
                     deadline = Instant::now() + MAX_AGE;
                 }
@@ -147,7 +149,7 @@ pub async fn run(
 
             _ = tokio::time::sleep_until(deadline) => {
                 if pending > 0 {
-                    flush(&mut writer, &db)?;
+                    flush(&mut writer, &db, &inflight)?;
                     pending = 0;
                 }
                 deadline = Instant::now() + MAX_AGE;
@@ -161,8 +163,17 @@ pub async fn run(
 /// does NOT abort the indexer — the index is already durable, and the
 /// next crawl will redundantly re-upsert the affected URLs (Tantivy
 /// `upsert` is idempotent by URL term-delete).
-fn flush(writer: &mut IndexWriter, db: &Database) -> CrawlResult<()> {
+fn flush(writer: &mut IndexWriter, db: &Database, inflight: &AtomicI64) -> CrawlResult<()> {
     let journal = writer.commit()?;
+    // Every journal entry corresponds to one earlier `indexer_upsert_tx.send`
+    // (which incremented `inflight`). Decrement here, after Tantivy has
+    // committed, so the counter reaches zero exactly when the index is
+    // durably caught up. Use saturating_sub semantics via `fetch_sub` —
+    // even if a future change miscounts, we don't want it going negative
+    // and panicking under cast.
+    if !journal.is_empty() {
+        inflight.fetch_sub(journal.len() as i64, Ordering::Relaxed);
+    }
     if journal.is_empty() {
         return Ok(());
     }
@@ -249,7 +260,7 @@ mod tests {
                     let db_for_task = Arc::clone(&db);
                     let idx_for_task = Arc::clone(&index);
                     let handle =
-                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task));
+                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task, std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0))));
 
                     for i in 0..BATCH_SIZE {
                         tx.send(mk_job(&format!("https://example.com/{i}"), &format!("h{i}")))
@@ -301,7 +312,7 @@ mod tests {
                     let db_for_task = Arc::clone(&db);
                     let idx_for_task = Arc::clone(&index);
                     let handle =
-                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task));
+                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task, std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0))));
 
                     // Three jobs — well under BATCH_SIZE.
                     for i in 0..3 {
@@ -354,7 +365,7 @@ mod tests {
                     let db_for_task = Arc::clone(&db);
                     let idx_for_task = Arc::clone(&index);
                     let handle =
-                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task));
+                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task, std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0))));
 
                     tx.send(mk_job("https://example.com/0", "h0")).await.unwrap();
                     tx.send(mk_job("https://example.com/1", "h1")).await.unwrap();
@@ -382,10 +393,7 @@ mod tests {
     #[test]
     fn delete_batch_removes_docs_and_commits_immediately() {
         use tantivy::{
-            collector::Count,
-            query::TermQuery,
-            schema::IndexRecordOption,
-            ReloadPolicy, Term,
+            collector::Count, query::TermQuery, schema::IndexRecordOption, ReloadPolicy, Term,
         };
 
         fn count_for_url(index: &tantivy::Index, url: &str) -> usize {
@@ -422,11 +430,15 @@ mod tests {
                     let db_for_task = Arc::clone(&db);
                     let idx_for_task = Arc::clone(&index);
                     let handle =
-                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task));
+                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task, std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0))));
 
                     // Index two pages and let the time trigger commit them.
-                    tx.send(mk_job("https://example.com/0", "h0")).await.unwrap();
-                    tx.send(mk_job("https://example.com/1", "h1")).await.unwrap();
+                    tx.send(mk_job("https://example.com/0", "h0"))
+                        .await
+                        .unwrap();
+                    tx.send(mk_job("https://example.com/1", "h1"))
+                        .await
+                        .unwrap();
                     tokio::time::sleep(MAX_AGE + Duration::from_millis(200)).await;
 
                     assert_eq!(
