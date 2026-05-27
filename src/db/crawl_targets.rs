@@ -44,6 +44,13 @@ pub struct CrawlTargetListItem {
     /// or broken URLs in the admin UI; 429s are reported separately via
     /// [`rate_limited`].
     pub error_pages_count: i64,
+    /// Count of crawled_pages rows for this target that have been fetched
+    /// at least once (`content_hash IS NOT NULL`). Closest proxy for
+    /// "how many of this target's pages are in the index" without doing a
+    /// per-target Tantivy query — aliased URLs (redirects, canonicals)
+    /// keep their fetched-side row with content_hash set even though the
+    /// IndexJob landed under a different URL.
+    pub indexed_pages_count: i64,
     /// Per-target politeness-delay override in seconds. `None` means fall
     /// back to the global default + robots.txt as before; `Some(n)` raises
     /// the floor to `max(n seconds, robots.txt Crawl-Delay)`.
@@ -126,7 +133,12 @@ pub fn list(conn: &Connection) -> Result<Vec<CrawlTargetListItem>> {
                       AND cp.last_status >= 400 \
                       AND cp.last_status != 429 \
                 ) AS error_pages_count, \
-                ct.crawl_delay_secs \
+                ct.crawl_delay_secs, \
+                ( \
+                    SELECT COUNT(*) FROM crawled_pages cp \
+                    WHERE cp.crawl_target_id = ct.id \
+                      AND cp.content_hash IS NOT NULL \
+                ) AS indexed_pages_count \
          FROM crawl_targets ct \
          JOIN collections c ON c.id = ct.collection_id \
          ORDER BY c.name, ct.created_at",
@@ -146,6 +158,7 @@ pub fn list(conn: &Connection) -> Result<Vec<CrawlTargetListItem>> {
                 rate_limited: row.get::<_, i64>(8)? != 0,
                 error_pages_count: row.get(9)?,
                 crawl_delay_secs: row.get(10)?,
+                indexed_pages_count: row.get(11)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

@@ -83,10 +83,7 @@ async fn get_status(State(state): State<AppState>) -> Json<StatusResponse> {
     // and a single decrement regardless of how many `crawled_pages` rows
     // share the canonicalised content. Reaches zero exactly when the
     // index is durably caught up; safe to gate an export on.
-    let indexing_pending_count = state
-        .indexing_inflight
-        .load(Ordering::Relaxed)
-        .max(0);
+    let indexing_pending_count = state.indexing_inflight.load(Ordering::Relaxed).max(0);
 
     // TODO(Phase 2): replace with state.crawler.active_count() once the
     // Phase 2 crawler exposes live crawl metrics.

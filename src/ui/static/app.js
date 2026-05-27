@@ -2,8 +2,27 @@
   const form = document.getElementById("search-form");
   const qInput = document.getElementById("q");
   const collSelect = document.getElementById("collection");
+  const collMeta = document.getElementById("collection-meta");
   const results = document.getElementById("results");
   const status = document.getElementById("status");
+
+  // name → document count, populated by loadCollections, consumed by
+  // updateCollectionMeta on dropdown change.
+  const collectionDocCounts = new Map();
+
+  function updateCollectionMeta() {
+    const name = collSelect.value;
+    if (!name) {
+      collMeta.textContent = "";
+      return;
+    }
+    const n = collectionDocCounts.get(name);
+    if (n == null) {
+      collMeta.textContent = "";
+      return;
+    }
+    collMeta.textContent = n.toLocaleString() + " page" + (n === 1 ? "" : "s") + " in " + name;
+  }
 
   async function loadCollections() {
     try {
@@ -14,11 +33,17 @@
         opt.value = c.name;
         opt.textContent = c.name;
         collSelect.appendChild(opt);
+        if (typeof c.documents === "number") {
+          collectionDocCounts.set(c.name, c.documents);
+        }
       }
+      updateCollectionMeta();
     } catch (e) {
       console.warn("collections load failed", e);
     }
   }
+
+  collSelect.addEventListener("change", updateCollectionMeta);
 
   function escapeText(s) {
     const d = document.createElement("div");

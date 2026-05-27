@@ -114,9 +114,11 @@ async fn end_to_end_single_page_indexes_and_records_outlink() {
         collection_name: "test-collection".to_string(),
     };
 
-    let result = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 1_000_000)
-        .await
-        .expect("crawl_page should succeed");
+    let result = crawl_page(
+        &page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 1_000_000,
+    )
+    .await
+    .expect("crawl_page should succeed");
 
     assert!(result.indexed, "page should be indexed on first crawl");
     assert!(
@@ -226,9 +228,11 @@ async fn second_crawl_with_304_skips_indexing() {
     };
 
     // First crawl — should index the page and store etag "v1"
-    let r1 = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 1_000_000)
-        .await
-        .expect("first crawl_page should succeed");
+    let r1 = crawl_page(
+        &page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 1_000_000,
+    )
+    .await
+    .expect("first crawl_page should succeed");
 
     // Mark the row as durably indexed so the next-crawl skip-guard fires.
     // In production this happens automatically when the indexer task
@@ -243,9 +247,11 @@ async fn second_crawl_with_304_skips_indexing() {
     }
 
     // Second crawl — server returns 304, should skip re-indexing
-    let r2 = crawl_page(&page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 2_000_000)
-        .await
-        .expect("second crawl_page should succeed");
+    let r2 = crawl_page(
+        &page_url, &ctx, &fetcher, &robots, &db, &tx, &inflight, 2_000_000,
+    )
+    .await
+    .expect("second crawl_page should succeed");
 
     assert!(r1.indexed, "first crawl should index the page");
     assert!(!r1.not_modified, "first crawl should not be not_modified");

@@ -429,8 +429,13 @@ mod tests {
 
                     let db_for_task = Arc::clone(&db);
                     let idx_for_task = Arc::clone(&index);
-                    let handle =
-                        tokio::task::spawn_local(run(rx, del_rx, idx_for_task, db_for_task, std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0))));
+                    let handle = tokio::task::spawn_local(run(
+                        rx,
+                        del_rx,
+                        idx_for_task,
+                        db_for_task,
+                        std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0)),
+                    ));
 
                     // Index two pages and let the time trigger commit them.
                     tx.send(mk_job("https://example.com/0", "h0"))

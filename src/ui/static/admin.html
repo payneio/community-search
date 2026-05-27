@@ -519,8 +519,16 @@ async function api(path, opts = {}) {
     throw new ApiError(401, 'No admin token set. Open Settings to paste your admin token.');
   }
   const headers = { 'Authorization': 'Bearer ' + token, ...(opts.headers || {}) };
-  if (opts.body !== undefined && typeof opts.body !== 'string') {
-    opts.body = JSON.stringify(opts.body);
+  // Bypass JSON encoding for binary bodies (File/Blob/ArrayBuffer/typed
+  // arrays). Callers wanting JSON either pass a string or a plain object;
+  // the object branch JSON-stringifies. Without this, uploading a File
+  // would get JSON.stringified to `{}`.
+  const body = opts.body;
+  const isBinary = body instanceof Blob
+    || body instanceof ArrayBuffer
+    || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(body));
+  if (body !== undefined && !isBinary && typeof body !== 'string') {
+    opts.body = JSON.stringify(body);
   }
   if (typeof opts.body === 'string' && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
@@ -951,6 +959,7 @@ async function viewCollectionsList() {
         h('th', null, 'ID'),
         h('th', null, 'Name'),
         h('th', null, 'Description'),
+        h('th', { style: 'text-align:right' }, 'Documents'),
         h('th', { style: 'width:1px' }, ''),
       )),
     );
@@ -960,6 +969,8 @@ async function viewCollectionsList() {
         h('td', { class: 'mono' }, String(c.id)),
         h('td', null, h('a', { href: '#/collections/' + c.id }, c.name)),
         h('td', null, c.description || ''),
+        h('td', { class: 'mono', style: 'text-align:right' },
+          (c.documents ?? 0).toLocaleString()),
         h('td', null,
           h('div', { class: 'row-actions' },
             h('a', { href: '#/collections/' + c.id },
@@ -1185,6 +1196,10 @@ async function renderCrawlTargetsTab(content, collection) {
       tbody.appendChild(h('tr', null,
         h('td', { class: 'mono' }, String(t.id)),
         h('td', null, h('a', { href: t.url_prefix, target: '_blank', rel: 'noopener' }, t.url_prefix)),
+        h('td', { class: 'mono', style: 'text-align:right',
+                  title: 'Pages fetched at least once for this target. ' +
+                         'Closest proxy for indexed pages (aliased URLs may differ).' },
+          (t.indexed_pages_count ?? 0).toLocaleString()),
         h('td', null, inlineNumber(t.recrawl_interval_secs, async (v) => {
           await api('/api/admin/crawl-targets', {
             method: 'POST',
@@ -1254,6 +1269,7 @@ async function renderCrawlTargetsTab(content, collection) {
       h('thead', null, h('tr', null,
         h('th', null, 'ID'),
         h('th', null, 'URL prefix'),
+        h('th', { style: 'text-align:right' }, 'Pages'),
         h('th', null, 'Interval'),
         h('th', { title: 'Per-target politeness delay between page fetches. — means default.' }, 'Delay'),
         h('th', null, 'Last crawled'),
@@ -2063,7 +2079,8 @@ function buildBackupCard() {
   const resumeBtn = h('button', null, 'Resume crawler');
   const refreshBtn = h('button', null, 'Refresh');
   const exportBtn = h('button', { class: 'primary' }, 'Download export');
-  const fileInput = h('input', { type: 'file', accept: 'application/json' });
+  const fileInput = h('input', { type: 'file',
+    accept: 'application/json,application/gzip,.json,.json.gz,.gz' });
   const importBtn = h('button', { class: 'primary' }, 'Upload & import');
   const statusMsg = h('div', { class: 'status-msg' });
 
@@ -2134,11 +2151,13 @@ function buildBackupCard() {
     statusMsg.textContent = 'Uploading ' + f.name + ' (' + fmtBytes(f.size) + ')…';
     statusMsg.className = 'status-msg';
     try {
-      const text = await f.text();
+      // Send the raw file bytes — the server sniffs gzip magic and
+      // decompresses inline, so .json and .json.gz both Just Work.
+      const isGz = /\.gz$/i.test(f.name);
       const report = await apiJson('/api/admin/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: text,
+        headers: { 'Content-Type': isGz ? 'application/gzip' : 'application/json' },
+        body: f,
       });
       const parts = [
         report.collections_imported + ' collections imported',

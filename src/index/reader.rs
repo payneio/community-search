@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use tantivy::{
-    collector::TopDocs,
+    collector::{Count, TopDocs},
     query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery},
     schema::{Field, IndexRecordOption, OwnedValue},
     snippet::SnippetGenerator,
@@ -195,6 +195,17 @@ impl Searcher {
         }
 
         Ok(hits)
+    }
+
+    /// Count how many documents are indexed under the given collection
+    /// name. Uses the `collection` STRING field and a Count collector —
+    /// cheap (no doc fetches) and exact.
+    pub fn count_in_collection(&self, collection: &str) -> Result<u64> {
+        let searcher = self.reader.searcher();
+        let term = Term::from_field_text(self.f_collection, collection);
+        let q = TermQuery::new(term, IndexRecordOption::Basic);
+        let n = searcher.search(&q, &Count)? as u64;
+        Ok(n)
     }
 
     /// Iterate every stored document in the index and return its retrievable

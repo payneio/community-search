@@ -26,8 +26,10 @@
 //! post-commit `mark_indexed_batch` finds the matching `crawled_pages` rows.
 
 use std::collections::HashMap;
+use std::io::Read;
 
 use axum::{
+    body::Bytes,
     extract::{DefaultBodyLimit, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
@@ -35,12 +37,17 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::public::AppState;
 use crate::index::indexer::IndexJob;
+
+/// Gzip's two-byte magic so we can detect a gzipped import body without
+/// relying on Content-Type. (Old uncompressed exports keep working.)
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
 
 /// Latest export format. Versioned independently from the Community Search
 /// Protocol so we can evolve the dump shape without touching the peer wire.
@@ -169,7 +176,11 @@ pub struct ImportReport {
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// GET /api/admin/export — dump everything as a JSON download.
+/// GET /api/admin/export — dump everything as a gzipped JSON download.
+///
+/// Page bodies dominate the payload and compress 5-10×, so we always ship
+/// gzipped. The download lands as `*.json.gz`; the matching import handler
+/// transparently accepts either gzipped or plain JSON.
 async fn handle_export(State(state): State<AppState>) -> Result<Response, (StatusCode, String)> {
     let envelope = {
         let conn = state.db.lock().map_err(|_| {
@@ -182,16 +193,23 @@ async fn handle_export(State(state): State<AppState>) -> Result<Response, (Statu
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     };
 
-    let body = serde_json::to_vec_pretty(&envelope)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Stream serde_json straight into the gzip encoder — avoids holding the
+    // uncompressed JSON in memory at the same time as the compressed copy.
+    let body = {
+        let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+        serde_json::to_writer(&mut enc, &envelope)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        enc.finish()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
 
     let filename = format!(
-        "community-search-export-{}.json",
+        "community-search-export-{}.json.gz",
         Utc::now().format("%Y%m%d-%H%M%S")
     );
 
     let headers = [
-        (header::CONTENT_TYPE, "application/json".to_string()),
+        (header::CONTENT_TYPE, "application/gzip".to_string()),
         (
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{filename}\""),
@@ -202,10 +220,31 @@ async fn handle_export(State(state): State<AppState>) -> Result<Response, (Statu
 }
 
 /// POST /api/admin/import — apply an envelope produced by `handle_export`.
+///
+/// Accepts the body as either gzipped JSON (preferred — what
+/// `handle_export` produces) or raw JSON (older exports, hand-written
+/// payloads). Detection is by the gzip magic bytes, not Content-Type, so
+/// curl invocations without `-H 'Content-Encoding: gzip'` still work.
 async fn handle_import(
     State(state): State<AppState>,
-    Json(envelope): Json<ExportEnvelope>,
+    body: Bytes,
 ) -> Result<Response, (StatusCode, String)> {
+    let envelope: ExportEnvelope = if body.len() >= 2 && body[..2] == GZIP_MAGIC {
+        let mut dec = GzDecoder::new(&body[..]);
+        let mut decoded = Vec::with_capacity(body.len() * 4);
+        dec.read_to_end(&mut decoded)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("gzip decode failed: {e}")))?;
+        serde_json::from_slice(&decoded).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("invalid JSON in gzip: {e}"),
+            )
+        })?
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid JSON: {e}")))?
+    };
+
     if envelope.format_version != FORMAT_VERSION {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1089,6 +1128,45 @@ mod tests {
         let hits = dst_search.search("skillet", Some("tech"), 10).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].url, "https://example.com/post2");
+    }
+
+    /// The gzip path on import accepts gzipped JSON and the plain path
+    /// still accepts uncompressed JSON. Detection is by magic bytes.
+    #[test]
+    fn import_accepts_both_gzip_and_plain_json() {
+        use flate2::write::GzEncoder;
+        use std::io::Write;
+
+        let src = fresh_db();
+        seed_source_db(&src);
+        let search = fresh_search();
+        let env = build_envelope(&src, "", search.as_ref()).unwrap();
+
+        let plain = serde_json::to_vec(&env).unwrap();
+        let gzipped = {
+            let mut e = GzEncoder::new(Vec::new(), flate2::Compression::default());
+            e.write_all(&plain).unwrap();
+            e.finish().unwrap()
+        };
+        assert!(
+            gzipped.len() < plain.len(),
+            "gzip should shrink the payload"
+        );
+        assert_eq!(&gzipped[..2], &GZIP_MAGIC);
+
+        // Round-trip both via the same detection logic the handler uses.
+        for (label, bytes) in [("plain", plain), ("gzip", gzipped)] {
+            let parsed: ExportEnvelope = if bytes.len() >= 2 && bytes[..2] == GZIP_MAGIC {
+                let mut dec = flate2::read::GzDecoder::new(&bytes[..]);
+                let mut out = Vec::new();
+                dec.read_to_end(&mut out).unwrap();
+                serde_json::from_slice(&out).unwrap()
+            } else {
+                serde_json::from_slice(&bytes).unwrap()
+            };
+            assert_eq!(parsed.format_version, FORMAT_VERSION, "{label} parse");
+            assert_eq!(parsed.collections.len(), 1, "{label} parse");
+        }
     }
 
     #[test]

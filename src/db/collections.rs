@@ -21,6 +21,12 @@ pub struct CollectionRecord {
     pub id: i64,
     pub name: String,
     pub description: String,
+    /// Number of documents currently in the Tantivy index for this
+    /// collection. Filled in by callers that have access to the
+    /// `SearchService`; defaults to 0 from pure-DB helpers like
+    /// `list_items` and `create_item`.
+    #[serde(default)]
+    pub documents: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +50,7 @@ pub fn create_item(conn: &Connection, name: &str, description: &str) -> Result<C
         rusqlite::params![rowid],
         |row| {
             Ok(CollectionRecord {
+                documents: 0,
                 id: row.get(0)?,
                 name: row.get(1)?,
                 description: row.get(2)?,
@@ -77,6 +84,7 @@ pub fn update_item(
         rusqlite::params![id],
         |row| {
             Ok(CollectionRecord {
+                documents: 0,
                 id: row.get(0)?,
                 name: row.get(1)?,
                 description: row.get(2)?,
@@ -94,6 +102,7 @@ pub fn list_items(conn: &Connection) -> Result<Vec<CollectionRecord>> {
         conn.prepare("SELECT rowid, name, description FROM collections ORDER BY name ASC")?;
     let rows = stmt.query_map([], |row| {
         Ok(CollectionRecord {
+            documents: 0,
             id: row.get(0)?,
             name: row.get(1)?,
             description: row.get(2)?,

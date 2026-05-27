@@ -115,14 +115,23 @@ async fn handle_collections(
 /// - 200 OK         — JSON array of `{id, name, description}` records
 /// - 500 Internal   — database error
 async fn list_collections(State(state): State<AppState>) -> Result<Response, (StatusCode, String)> {
-    let conn = state.db.lock().map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "db mutex poisoned".into(),
-        )
-    })?;
+    let mut rows = {
+        let conn = state.db.lock().map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "db mutex poisoned".into(),
+            )
+        })?;
+        list_items(&conn).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
 
-    let rows = list_items(&conn).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Fill in per-collection document counts from Tantivy. Count queries
+    // are O(matching docs); for a handful of collections this is cheap.
+    // Failures fall back to 0 rather than erroring the whole listing.
+    for r in &mut rows {
+        r.documents = state.search.count_in_collection(&r.name).unwrap_or(0);
+    }
+
     Ok(Json(rows).into_response())
 }
 

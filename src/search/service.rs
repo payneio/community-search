@@ -30,6 +30,11 @@ impl SearchService {
         self.index.export_all_docs()
     }
 
+    /// Number of documents indexed under the given collection name.
+    pub fn count_in_collection(&self, collection: &str) -> Result<u64> {
+        self.index.count_in_collection(collection)
+    }
+
     /// Search the local index, apply ranking, and return up to `limit` results.
     ///
     /// Fetches `limit * 4` raw candidates from the index, scores them with the

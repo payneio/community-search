@@ -161,6 +161,8 @@ pub const SEARCH_LIMIT: usize = 25;
 pub struct CollectionListItem {
     pub name: String,
     pub description: String,
+    /// Number of documents indexed under this collection's name.
+    pub documents: u64,
 }
 
 #[derive(Serialize)]
@@ -177,24 +179,35 @@ pub async fn health() -> Json<Value> {
 }
 
 /// GET /api/collections — list all collections ordered by name.
-pub async fn list_collections(State(db): State<SharedDb>) -> Json<CollectionsResponse> {
-    let collections = {
-        let conn = db.lock().expect("db mutex poisoned");
+pub async fn list_collections(State(state): State<AppState>) -> Json<CollectionsResponse> {
+    // Pull (name, description) under the DB lock, then drop the guard
+    // before querying Tantivy to keep the lock window short.
+    let basics: Vec<(String, String)> = {
+        let conn = state.db.lock().expect("db mutex poisoned");
         let mut stmt = conn
             .prepare("SELECT name, COALESCE(description, '') FROM collections ORDER BY name")
             .expect("prepare list_collections query");
-
         stmt.query_map([], |row| {
-            Ok(CollectionListItem {
-                name: row.get(0)?,
-                description: row.get(1)?,
-            })
+            Ok::<(String, String), rusqlite::Error>((row.get(0)?, row.get(1)?))
         })
         .expect("execute list_collections query")
         .map(|r| r.expect("map collection row"))
-        .collect::<Vec<_>>()
-        // `conn` and `stmt` drop here — MutexGuard released before return
+        .collect()
     };
+
+    let collections = basics
+        .into_iter()
+        .map(|(name, description)| {
+            // count_in_collection failures (e.g. transient reader reload)
+            // shouldn't break the listing — fall back to 0.
+            let documents = state.search.count_in_collection(&name).unwrap_or(0);
+            CollectionListItem {
+                name,
+                description,
+                documents,
+            }
+        })
+        .collect();
 
     Json(CollectionsResponse {
         protocol_version: PROTOCOL_VERSION,
@@ -477,10 +490,11 @@ mod tests {
     #[tokio::test]
     async fn lists_collections_with_version() {
         let db = test_db();
+        let state = test_app_state(db);
 
         let app = Router::new()
             .route("/api/collections", get(list_collections))
-            .with_state(db);
+            .with_state(state);
 
         let response = app
             .oneshot(
