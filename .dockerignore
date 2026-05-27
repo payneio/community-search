@@ -1,0 +1,7 @@
+target
+data
+.env
+.git
+.github
+*.swp
+.DS_Store
