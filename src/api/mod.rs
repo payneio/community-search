@@ -2,6 +2,7 @@ pub mod admin;
 pub mod auth;
 pub mod auth_attempts;
 pub mod gossip;
+pub mod mcp;
 pub mod public;
 pub mod rate_limit;
 pub mod router;
