@@ -240,9 +240,10 @@ impl Searcher {
     /// Run a BM25 query against `[title, body]` and return HTML-highlighted snippets.
     ///
     /// The snippet is generated from the `body` field using Tantivy's `SnippetGenerator`.
-    /// Query terms are wrapped in `<b>` tags in the returned HTML. When the snippet
-    /// generator produces no excerpt (e.g. the query matched only the title), the first
-    /// 220 characters of the body are returned as a plain-text fallback.
+    /// Query terms are wrapped in `<mark>` tags in the returned HTML (the semantically
+    /// correct element for highlighted search matches, and what the UI CSS styles).
+    /// When the snippet generator produces no excerpt (e.g. the query matched only the
+    /// title), the first 220 characters of the body are returned as a plain-text fallback.
     ///
     /// When `collection` is `Some`, results are filtered to that collection.
     pub fn search_with_snippets(
@@ -278,7 +279,11 @@ impl Searcher {
         let mut hits = Vec::with_capacity(top_docs.len());
         for (score, addr) in top_docs {
             let doc: TantivyDocument = searcher.doc(addr)?;
-            let snippet = snip_gen.snippet_from_doc(&doc);
+            let mut snippet = snip_gen.snippet_from_doc(&doc);
+            // Highlight matches with <mark> rather than Tantivy's hardcoded <b>.
+            // We keep to_html() so its HTML-escaping and overlapping-range collapse
+            // still apply; only the wrapping tag changes.
+            snippet.set_snippet_prefix_postfix("<mark>", "</mark>");
             let html: String = if snippet.is_empty() {
                 first_text(&doc, self.f_body).chars().take(220).collect()
             } else {
@@ -552,6 +557,17 @@ mod tests {
         assert!(
             hits[0].snippet_html.to_lowercase().contains("tokio"),
             "snippet_html should contain 'tokio' but was: {:?}",
+            hits[0].snippet_html
+        );
+        // Matches are wrapped in <mark>, not Tantivy's default <b>.
+        assert!(
+            hits[0].snippet_html.contains("<mark>") && hits[0].snippet_html.contains("</mark>"),
+            "snippet_html should highlight with <mark>, was: {:?}",
+            hits[0].snippet_html
+        );
+        assert!(
+            !hits[0].snippet_html.contains("<b>"),
+            "snippet_html should not use <b>, was: {:?}",
             hits[0].snippet_html
         );
     }
