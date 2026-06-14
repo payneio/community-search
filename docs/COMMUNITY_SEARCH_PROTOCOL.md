@@ -82,7 +82,7 @@ Federated search. Called by users and by other engines (fan-out).
 {
   "query": "tokio async runtime",
   "collection": "rust-blogs",
-  "remaining_depth": 0,
+  "depth": 0,
   "limit": 25
 }
 ```
@@ -91,18 +91,21 @@ Federated search. Called by users and by other engines (fan-out).
 |-------------------|---------|----------|--------------------------------------------------------|
 | query             | string  | yes      | Free-text query, BM25-friendly                         |
 | collection        | string  | no       | Omit or empty string = search all public collections   |
-| remaining_depth   | integer | yes      | See §4.1                                               |
+| depth             | integer | yes      | See §4.1                                               |
 | limit             | integer | no       | Max results per source; default 25                     |
 
-### 4.1 `remaining_depth` semantics
+> The field was named `remaining_depth` prior to v1.0; engines SHOULD accept it
+> as a deprecated alias for `depth` on input.
 
-- The originating client (or upstream peer) sets `remaining_depth` to
-  `fanout_depth` (e.g. `1` for direct peers only).
-- An engine that receives a request with `remaining_depth > 0` MAY fan out to
-  its own collection peers with `remaining_depth - 1`.
-- At `remaining_depth == 0` the engine MUST return only its local results;
+### 4.1 `depth` semantics
+
+- The originating client (or upstream peer) sets `depth` to `fanout_depth`
+  (e.g. `1` for direct peers only).
+- An engine that receives a request with `depth > 0` MAY fan out to its own
+  collection peers with `depth - 1`.
+- At `depth == 0` the engine MUST return only its local results;
   it MUST NOT fan out further.
-- Engines MUST NOT increase `remaining_depth` when forwarding.
+- Engines MUST NOT increase `depth` when forwarding.
 
 ### 4.2 Response — `text/event-stream`
 
@@ -151,6 +154,11 @@ return a single JSON object:
 ```
 
 SSE is the canonical form and is REQUIRED for full compatibility.
+
+> Non-normative: engines MAY additionally expose a `GET /api/search` convenience
+> endpoint (query string in, this same JSON object out) and an MCP server for
+> human/agent consumers. These are outside the federation contract; see the
+> README and `docs/spec.md`.
 
 ## 5. Endpoint: `POST /api/gossip/exchange`
 
@@ -282,7 +290,8 @@ Recommended posture:
 A conforming Community Search Protocol 1.0 engine MUST:
 
 1. Serve `GET /api/collections` returning a body with `protocol_version: "1.0"`.
-2. Serve `POST /api/search` and accept the `remaining_depth` field.
+2. Serve `POST /api/search` and accept the `depth` field (and its deprecated
+   `remaining_depth` alias).
 3. Serve `POST /api/gossip/exchange` with the merge semantics in §5.1.
 4. Include the `X-CommunitySearch-Version: 1.0` header on every peer-facing
    response.

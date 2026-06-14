@@ -2,11 +2,13 @@ use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::{
-    extract::{FromRef, State},
-    http::StatusCode,
+    extract::{FromRef, Query, State},
+    http::{header, HeaderMap, StatusCode},
     response::sse::{Event, KeepAlive, Sse},
+    response::{IntoResponse, Response},
     Json,
 };
 use rusqlite::Connection;
@@ -14,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tokio::sync::RwLock;
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt as _};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt as _};
 
 use crate::api::rate_limit::{PeerIpCache, RateLimitConfig};
 use crate::api::sse::SseEvent;
@@ -22,6 +24,7 @@ use crate::federation::fanout::{active_collection_peers_for, dispatch};
 use crate::federation::health::record_result;
 use crate::federation::peer::PeerClient;
 use crate::protocol::PROTOCOL_VERSION;
+use crate::search::result::SearchResult;
 use crate::search::service::SearchService;
 use crate::RuntimeConfig;
 
@@ -145,9 +148,12 @@ impl FromRef<AppState> for SharedDb {
 pub struct SearchRequest {
     pub query: String,
     pub collection: Option<String>,
-    /// Fan-out depth for Phase 5 peer forwarding; accepted but ignored in Phase 3.
-    #[serde(default)]
-    pub remaining_depth: u32,
+    /// Fan-out depth: an engine receiving `depth > 0` MAY fan out to its own
+    /// collection peers with `depth - 1`, stopping at `0`. The `remaining_depth`
+    /// alias is accepted on the wire for compatibility with engines predating
+    /// the rename.
+    #[serde(default, alias = "remaining_depth")]
+    pub depth: u32,
 }
 
 // -- Constants ----------------------------------------------------------------
@@ -215,45 +221,259 @@ pub async fn list_collections(State(state): State<AppState>) -> Json<Collections
     })
 }
 
+/// Maximum wall-clock time spent collecting peer fan-out results for the
+/// non-streaming JSON / MCP search paths. Local results are always returned;
+/// peers that exceed this budget are simply omitted from the response.
+pub const FANOUT_COLLECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Maximum federation fan-out depth honored by the non-streaming search paths.
+/// Mirrors the streaming handler's depth contract (peers decrement and stop at 0).
+pub const MAX_FANOUT_DEPTH: u32 = 2;
+
+/// Resolve a collection name to its numeric id for ranking config.
+///
+/// Returns `None` when `collection` is `None` or no row matches. The DB lock is
+/// taken and released entirely within this call — never held across an await.
+fn lookup_collection_id(db: &SharedDb, collection: Option<&str>) -> Option<i64> {
+    let name = collection?;
+    let conn = db.lock().expect("db mutex poisoned");
+    conn.query_row(
+        "SELECT id FROM collections WHERE name = ?1",
+        rusqlite::params![name],
+        |row| row.get::<_, i64>(0),
+    )
+    .ok()
+}
+
+/// Run a search and collect the results into a single `Vec` (non-streaming).
+///
+/// This is the synchronous counterpart to [`search_handler`]'s SSE stream,
+/// shared by the GET `/api/search` JSON endpoint and the MCP `search` tool —
+/// both of which need one bounded value rather than an open stream.
+///
+/// Local-index results are always included. When `depth > 0`, the call also
+/// fans out to the active collection peers for `collection`, bounded by
+/// [`FANOUT_COLLECT_TIMEOUT`]; peers that error or exceed the budget are dropped
+/// rather than failing the whole call. The merged results are sorted by score
+/// descending so callers get a single ranked list.
+pub async fn collect_search(
+    state: &AppState,
+    query: &str,
+    collection: Option<&str>,
+    depth: u32,
+) -> Vec<SearchResult> {
+    let collection_id = lookup_collection_id(&state.db, collection);
+    let now = chrono::Utc::now().timestamp();
+
+    // --- Local search (blocking) ---------------------------------------------
+    let search = Arc::clone(&state.search);
+    let q = query.to_string();
+    let col = collection.map(str::to_string);
+    let local = tokio::task::spawn_blocking(move || {
+        search.local_search(&q, col.as_deref(), collection_id, SEARCH_LIMIT, now)
+    })
+    .await;
+
+    let mut results: Vec<SearchResult> = match local {
+        Ok(Ok(items)) => items,
+        Ok(Err(e)) => {
+            tracing::error!("local_search error: {e}");
+            Vec::new()
+        }
+        Err(e) => {
+            tracing::error!("spawn_blocking join error: {e}");
+            Vec::new()
+        }
+    };
+
+    // --- Peer fan-out (bounded) ----------------------------------------------
+    if depth > 0 {
+        let local_col = collection.unwrap_or("");
+        let peers = {
+            let conn = state.db.lock().expect("db mutex poisoned");
+            active_collection_peers_for(&conn, local_col).unwrap_or_else(|e| {
+                tracing::warn!("active_collection_peers_for error: {e}");
+                vec![]
+            })
+            // MutexGuard released here before any await
+        };
+
+        if !peers.is_empty() {
+            let req = SearchRequest {
+                query: query.to_string(),
+                collection: collection.map(str::to_string),
+                depth,
+            };
+            let outgoing_depth = depth.saturating_sub(1).min(u8::MAX as u32) as u8;
+            let mut peer_stream =
+                dispatch(Arc::clone(&state.peer_client), peers, req, outgoing_depth);
+
+            // Drain peer outcomes until the stream ends or the budget elapses.
+            // Accumulating into `results` outside the timeout means a slow peer
+            // costs us its results, not the fast peers' results already in hand.
+            let deadline = tokio::time::Instant::now() + FANOUT_COLLECT_TIMEOUT;
+            loop {
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    break;
+                }
+                match tokio::time::timeout(remaining, peer_stream.next()).await {
+                    Ok(Some(outcome)) => {
+                        {
+                            let conn = state.db.lock().expect("db mutex poisoned");
+                            if let Err(e) = record_result(
+                                &conn,
+                                outcome.node_peer_id,
+                                outcome.result.is_ok(),
+                                Some(outcome.elapsed_ms),
+                            ) {
+                                tracing::warn!("record_result error: {e}");
+                            }
+                            // MutexGuard released before next await
+                        }
+                        match outcome.result {
+                            Ok(rs) => results.extend(rs),
+                            Err(e) => tracing::warn!("peer search error: {e}"),
+                        }
+                    }
+                    Ok(None) => break, // all peers reported
+                    Err(_) => break,   // deadline reached
+                }
+            }
+        }
+    }
+
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results
+}
+
+/// Query parameters for `GET /api/search`.
+#[derive(Debug, Deserialize)]
+pub struct SearchGetParams {
+    /// The search query. `query` is accepted as an alias for ergonomics.
+    #[serde(default, alias = "query")]
+    pub q: String,
+    /// Optional collection name to scope the search.
+    pub collection: Option<String>,
+    /// Federation fan-out depth. `0` (default) searches this engine only;
+    /// `1`–`2` also query federated peers (bounded by [`FANOUT_COLLECT_TIMEOUT`]).
+    #[serde(default)]
+    pub depth: u32,
+}
+
+/// Single-shot JSON search response. Mirrors the non-streaming fallback shape
+/// in `docs/COMMUNITY_SEARCH_PROTOCOL.md` §4.3.
+#[derive(Serialize)]
+pub struct JsonSearchResponse {
+    pub protocol_version: &'static str,
+    pub results: Vec<SearchResult>,
+    pub duration_ms: u64,
+}
+
+/// Run a non-streaming search and build the JSON envelope (protocol §4.3).
+/// Shared by the GET endpoint and the POST `Accept: application/json` fallback.
+async fn run_json_search(
+    state: &AppState,
+    query: &str,
+    collection: Option<&str>,
+    depth: u32,
+) -> JsonSearchResponse {
+    let depth = depth.min(MAX_FANOUT_DEPTH);
+    let start = tokio::time::Instant::now();
+    let results = collect_search(state, query, collection, depth).await;
+    JsonSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        results,
+        duration_ms: start.elapsed().as_millis() as u64,
+    }
+}
+
+/// Whether the client has asked for the non-streaming JSON response.
+///
+/// Returns `true` only when `Accept` explicitly names `application/json` and
+/// does *not* name `text/event-stream`, so the default (`*/*`, no header, or an
+/// SSE-aware client) keeps the canonical streaming response.
+fn wants_json(headers: &HeaderMap) -> bool {
+    match headers.get(header::ACCEPT).and_then(|v| v.to_str().ok()) {
+        Some(accept) => {
+            accept.contains("application/json") && !accept.contains("text/event-stream")
+        }
+        None => false,
+    }
+}
+
+/// GET /api/search?q=…&collection=…&depth=N — non-streaming JSON search.
+///
+/// The machine-friendly counterpart to the SSE `POST /api/search`: one GET, one
+/// JSON document. Built for `curl`, scripts, and LLM fetchers that cannot
+/// consume an event stream. Local-only by default; pass `depth=1` (or `2`) to
+/// opt into bounded federated fan-out.
+pub async fn search_get(
+    State(state): State<AppState>,
+    Query(params): Query<SearchGetParams>,
+) -> Result<Json<JsonSearchResponse>, (StatusCode, String)> {
+    let query = params.q.trim();
+    if query.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "query parameter `q` is required".to_string(),
+        ));
+    }
+
+    Ok(Json(
+        run_json_search(&state, query, params.collection.as_deref(), params.depth).await,
+    ))
+}
+
 /// POST /api/search — stream search results as Server-Sent Events.
 ///
 /// Validates that `query` is non-empty, then streams up to [`SEARCH_LIMIT`]
 /// results from the local index, followed by a `source_complete` event.
 ///
-/// When `remaining_depth > 0`, the handler also fans out to all active
-/// collection peers for the requested collection before emitting the final
-/// `done` event.  `remaining_depth` is decremented by one (saturating) before
-/// forwarding so that chains of peers do not loop indefinitely.
+/// When `depth > 0`, the handler also fans out to all active collection peers
+/// for the requested collection before emitting the final `done` event. `depth`
+/// is decremented by one (saturating) before forwarding so that chains of peers
+/// do not loop indefinitely.
 ///
 /// Peer errors are logged with `tracing::warn` but never abort the stream.
+///
+/// **Non-streaming fallback (protocol §4.3):** a client that sends
+/// `Accept: application/json` (and not `text/event-stream`) gets a single JSON
+/// object instead of the SSE stream — for peers/clients that cannot consume SSE.
 pub async fn search_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<SearchRequest>,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     if req.query.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "query is required".to_string()));
     }
 
+    // Content negotiation: non-streaming JSON fallback for non-SSE clients.
+    if wants_json(&headers) {
+        let resp = run_json_search(
+            &state,
+            req.query.trim(),
+            req.collection.as_deref(),
+            req.depth,
+        )
+        .await;
+        return Ok(Json(resp).into_response());
+    }
+
     // Look up the numeric collection id for ranking config (synchronous, not
     // held across any await point).
-    let collection_id: Option<i64> = if let Some(ref name) = req.collection {
-        let conn = state.db.lock().expect("db mutex poisoned");
-        conn.query_row(
-            "SELECT id FROM collections WHERE name = ?1",
-            rusqlite::params![name],
-            |row| row.get::<_, i64>(0),
-        )
-        .ok()
-        // MutexGuard / conn released here
-    } else {
-        None
-    };
+    let collection_id = lookup_collection_id(&state.db, req.collection.as_deref());
 
     let now = chrono::Utc::now().timestamp();
     let (tx, rx) = mpsc::channel::<SseEvent>(64);
 
     // Extract fields needed in the spawned task before consuming `req`.
-    let remaining_depth = req.remaining_depth;
+    let depth = req.depth;
     // Clone the full request for fanout forwarding; the original's fields are
     // moved into the local-search closure below.
     let fanout_req = req.clone();
@@ -299,7 +519,7 @@ pub async fn search_handler(
         // --- Peer fan-out (Phase 5) ------------------------------------------
         // Only fan out when the request still has remaining depth, preventing
         // infinite forwarding chains.
-        if remaining_depth > 0 {
+        if depth > 0 {
             let local_col = fanout_req.collection.as_deref().unwrap_or("");
             let peers = {
                 let conn = db.lock().expect("db mutex poisoned");
@@ -309,7 +529,7 @@ pub async fn search_handler(
                 })
                 // MutexGuard released here before any await
             };
-            let outgoing_depth = remaining_depth.saturating_sub(1).min(u8::MAX as u32) as u8;
+            let outgoing_depth = depth.saturating_sub(1).min(u8::MAX as u32) as u8;
             let mut peer_stream = dispatch(peer_client, peers, fanout_req, outgoing_depth);
             while let Some(outcome) = peer_stream.next().await {
                 // Record peer health for every outcome, success or failure.
@@ -352,7 +572,9 @@ pub async fn search_handler(
         Ok::<Event, Infallible>(Event::default().event(event.name()).data(event.data_json()))
     });
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 
 // -- Tests --------------------------------------------------------------------
@@ -637,5 +859,116 @@ mod tests {
 
         assert!(body.contains("event: source_complete"), "body: {body}");
         assert!(body.contains("event: done"), "body: {body}");
+    }
+
+    #[tokio::test]
+    async fn search_get_returns_json_envelope() {
+        let db = test_db();
+        let app_state = test_app_state(db);
+
+        let app = Router::new()
+            .route("/api/search", get(search_get))
+            .with_state(app_state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/search?q=rust")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["protocol_version"], "1.0");
+        assert!(json["results"].is_array(), "results must be an array");
+        assert!(
+            json["duration_ms"].is_number(),
+            "duration_ms must be present"
+        );
+    }
+
+    #[test]
+    fn search_request_accepts_remaining_depth_alias() {
+        // Wire compatibility: engines predating the rename send `remaining_depth`.
+        let req: SearchRequest =
+            serde_json::from_str(r#"{"query":"x","remaining_depth":2}"#).unwrap();
+        assert_eq!(req.depth, 2);
+        // And the canonical `depth` name works too.
+        let req: SearchRequest = serde_json::from_str(r#"{"query":"x","depth":1}"#).unwrap();
+        assert_eq!(req.depth, 1);
+    }
+
+    #[tokio::test]
+    async fn search_post_json_fallback_on_accept_header() {
+        let db = test_db();
+        let app_state = test_app_state(db);
+
+        let app = Router::new()
+            .route("/api/search", post(search_handler))
+            .with_state(app_state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/search")
+                    .header("content-type", "application/json")
+                    .header("accept", "application/json")
+                    .body(Body::from(r#"{"query":"rust"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(
+            ct.starts_with("application/json"),
+            "fallback must be JSON, got: {ct}"
+        );
+
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["protocol_version"], "1.0");
+        assert!(json["results"].is_array());
+    }
+
+    #[tokio::test]
+    async fn search_get_rejects_missing_query() {
+        let db = test_db();
+        let app_state = test_app_state(db);
+
+        let app = Router::new()
+            .route("/api/search", get(search_get))
+            .with_state(app_state);
+
+        // No `q`, and whitespace-only `q`, both 400.
+        for uri in ["/api/search", "/api/search?q=%20%20"] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "uri {uri} should 400"
+            );
+        }
     }
 }

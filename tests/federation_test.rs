@@ -127,7 +127,7 @@ async fn test_app_with_limits(
 
 /// Helper: spawn a wiremock peer returning one SSE result with the given
 /// title, register it as a node + collection peer for collection "rust", POST
-/// /api/search with remaining_depth:1, and return the full response body.
+/// /api/search with depth:1, and return the full response body.
 ///
 /// Extracted from the setup pattern used in integration tests so each test
 /// only asserts its specific concern.
@@ -206,13 +206,13 @@ async fn setup_peer_and_search(result_title: &str) -> String {
         "POST /api/admin/collection-peers must return 201"
     );
 
-    // POST /api/search with remaining_depth:1 to trigger fanout.
+    // POST /api/search with depth:1 to trigger fanout.
     let search_resp = client
         .post(format!("{base_url}/api/search"))
         .json(&serde_json::json!({
             "query": "q",
             "collection": "rust",
-            "remaining_depth": 1
+            "depth": 1
         }))
         .send()
         .await
@@ -296,7 +296,7 @@ async fn fanout_emits_source_complete_per_peer() {
     );
 }
 
-/// POST /api/search fans out to collection peers when remaining_depth > 0.
+/// POST /api/search fans out to collection peers when depth > 0.
 ///
 /// Sets up a wiremock peer returning a single SSE result with title "REMOTE",
 /// registers it as a node peer + collection peer for collection "rust",
@@ -380,13 +380,13 @@ async fn public_search_streams_local_then_peer_results() {
         "POST /api/admin/collection-peers must return 201"
     );
 
-    // --- Step 5: POST /api/search with remaining_depth:1 ---
+    // --- Step 5: POST /api/search with depth:1 ---
     let search_resp = client
         .post(format!("{base_url}/api/search"))
         .json(&serde_json::json!({
             "query": "q",
             "collection": "rust",
-            "remaining_depth": 1
+            "depth": 1
         }))
         .send()
         .await
@@ -452,13 +452,13 @@ async fn failed_peer_increments_failure_counter() {
     let node_id =
         setup_node_and_collection_peer(&base_url, &client, &peer_server.uri(), "fail-peer").await;
 
-    // Issue a search with remaining_depth:1 to trigger fanout.
+    // Issue a search with depth:1 to trigger fanout.
     let search_resp = client
         .post(format!("{base_url}/api/search"))
         .json(&serde_json::json!({
             "query": "q",
             "collection": "rust",
-            "remaining_depth": 1
+            "depth": 1
         }))
         .send()
         .await
@@ -548,7 +548,7 @@ async fn peer_ips_use_more_generous_rate_limit() {
 ///
 /// Spins up two wiremock servers (p1, p2), registers both as node peers with
 /// collection peers for the local "rust" collection (source_weight 1.0 and 0.5
-/// respectively), issues a federated search with remaining_depth:1, and asserts
+/// respectively), issues a federated search with depth:1, and asserts
 /// that:
 ///   - Both peer results ("P1", "P2") appear in the SSE stream.
 ///   - Exactly two `source_complete` events are emitted (one per peer source).
@@ -683,14 +683,14 @@ async fn end_to_end_two_peer_search() {
         "p2 collection peer must return 201"
     );
 
-    // --- POST /api/search with remaining_depth:1 to trigger fanout to both peers ---
+    // --- POST /api/search with depth:1 to trigger fanout to both peers ---
 
     let search_resp = client
         .post(format!("{base_url}/api/search"))
         .json(&serde_json::json!({
             "query": "q",
             "collection": "rust",
-            "remaining_depth": 1
+            "depth": 1
         }))
         .send()
         .await

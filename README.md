@@ -129,11 +129,32 @@ The crawler will index all pages under the prefix and queue periodic re-crawls.
 
 ### Search
 
+The web UI at http://localhost:8080 includes a collection picker and streams results as peers respond. For scripts and tools, `GET /api/search` returns a single JSON document:
+
 ```bash
-curl -s "http://localhost:8080/api/search?query=mechanical+keyboards&collection=hobby-blogs"
+curl -s "http://localhost:8080/api/search?q=mechanical+keyboards&collection=hobby-blogs"
+# {"protocol_version":"1.0","results":[ ... ],"duration_ms":12}
 ```
 
-Or use the web UI at http://localhost:8080 — it includes a collection picker and shows results as peers respond.
+| Query param  | Default | Notes                                                             |
+|--------------|---------|-------------------------------------------------------------------|
+| `q`          | —       | Required. The search query (`query` also accepted).               |
+| `collection` | all     | Optional collection name to scope the search.                     |
+| `depth`      | `0`     | `0` = this engine only; `1`–`2` also query federated peers (slower). |
+
+The browser-facing `POST /api/search` streams the same results as Server-Sent Events; it also returns this JSON shape when called with `Accept: application/json`.
+
+### Machine & agent access
+
+- **`GET /opensearch.xml`** — an OpenSearch descriptor, so browsers can add this engine as a search provider. Set `SELF_URL` for absolute URLs.
+- **`GET /robots.txt`** — steers crawlers to the homepage and away from result/API pages.
+- **`POST /mcp`** — a [Model Context Protocol](https://modelcontextprotocol.io) server exposing a `search` tool, so LLM agents (ChatGPT, Claude, etc.) can query the index directly:
+
+```bash
+curl -s -X POST http://localhost:8080/mcp -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
+       "params":{"name":"search","arguments":{"query":"mechanical keyboards"}}}'
+```
 
 ### Add a node peer
 
@@ -171,7 +192,7 @@ There are two distinct levels of peering.
 
 **Fan-out depth** is configurable:
 - `fanout_depth: 1` (default) — query only direct collection peers, which return local results only.
-- `fanout_depth: 2` — direct peers also fan out to their peers. Controlled by the `remaining_depth` field in the search request; peers decrement it and stop at 0.
+- `fanout_depth: 2` — direct peers also fan out to their peers. Controlled by the `depth` field in the search request; peers decrement it and stop at 0.
 
 Results from all sources are re-ranked locally using the scoring formula:
 

@@ -73,7 +73,7 @@
   async function runSearch(query, collection) {
     results.innerHTML = "";
     status.textContent = "Searching\u2026";
-    const body = { query, collection: collection || null, remaining_depth: 1 };
+    const body = { query, collection: collection || null, depth: 1 };
 
     const res = await fetch("/api/search", {
       method: "POST",
@@ -122,12 +122,42 @@
     return out;
   }
 
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    runSearch(qInput.value.trim(), collSelect.value).catch((err) => {
+  // Reflect the current search into the URL query string so results are
+  // deep-linkable, then run it. `push` controls whether this creates a new
+  // history entry (user-initiated search) or replaces the current one.
+  function search(query, collection, push) {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (collection) params.set("collection", collection);
+    const url = params.toString() ? "?" + params.toString() : location.pathname;
+    if (push) history.pushState({ query, collection }, "", url);
+    else history.replaceState({ query, collection }, "", url);
+
+    runSearch(query, collection).catch((err) => {
       status.textContent = "Error: " + err.message;
     });
+  }
+
+  // Sync inputs from the URL and run the search if there's a query. Used on
+  // initial load and on back/forward navigation.
+  function applyUrl(push) {
+    const params = new URLSearchParams(location.search);
+    const query = (params.get("q") || "").trim();
+    const collection = params.get("collection") || "";
+    qInput.value = query;
+    collSelect.value = collection;
+    updateCollectionMeta();
+    if (query) search(query, collection, push);
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    search(qInput.value.trim(), collSelect.value, true);
   });
 
-  loadCollections();
+  window.addEventListener("popstate", () => applyUrl(false));
+
+  // Load collections first so the dropdown can be restored from the URL, then
+  // apply whatever query the URL already carries (replaceState, not push).
+  loadCollections().then(() => applyUrl(false));
 })();

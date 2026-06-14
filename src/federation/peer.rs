@@ -162,7 +162,7 @@ mod tests {
         let req = SearchRequest {
             query: "hi".to_string(),
             collection: Some("rust".to_string()),
-            remaining_depth: 0,
+            depth: 0,
         };
         let results = client.search(&server.uri(), &req).await.unwrap();
         assert_eq!(results.len(), 2);
@@ -269,7 +269,7 @@ mod tests {
         let req = SearchRequest {
             query: "rust".to_string(),
             collection: Some("rust".to_string()),
-            remaining_depth: 0,
+            depth: 0,
         };
         let results = client
             .search_tagged(&server.uri(), &req, "peer:example.com/rust")

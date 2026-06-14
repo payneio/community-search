@@ -119,7 +119,7 @@ async fn search_streams_local_results_then_done() {
         .json(&serde_json::json!({
             "query": "tokio",
             "collection": "tech",
-            "remaining_depth": 0
+            "depth": 0
         }))
         .send()
         .await

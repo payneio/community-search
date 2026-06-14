@@ -41,7 +41,7 @@ pub struct PeerOutcome {
 /// rather than waiting for the slowest peer before delivering any output.
 ///
 /// For each peer the outgoing [`SearchRequest`] is patched with:
-/// - `remaining_depth = outgoing_depth`
+/// - `depth = outgoing_depth`
 /// - `collection = Some(peer.remote_collection)`
 ///
 /// Errors from individual peers are captured in [`PeerOutcome::result`] rather
@@ -58,7 +58,7 @@ pub fn dispatch(
     for peer in peers {
         let client = Arc::clone(&client);
         let mut req = request.clone();
-        req.remaining_depth = outgoing_depth as u32;
+        req.depth = outgoing_depth as u32;
         req.collection = Some(peer.remote_collection.clone());
         let label = peer.source_label.clone();
         let weight = peer.source_weight;
@@ -220,7 +220,7 @@ mod tests {
         let req = crate::search::SearchRequest {
             query: "x".to_string(),
             collection: Some("rust".to_string()),
-            remaining_depth: 0,
+            depth: 0,
         };
 
         let mut stream = dispatch(client, peers, req, 0);
@@ -276,7 +276,7 @@ mod tests {
         let req = crate::search::SearchRequest {
             query: "x".to_string(),
             collection: Some("rust".to_string()),
-            remaining_depth: 0,
+            depth: 0,
         };
 
         let mut stream = dispatch(client, peers, req, 0);

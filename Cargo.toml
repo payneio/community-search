@@ -1,6 +1,6 @@
 [package]
 name = "community-search"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Self-hosted, federated curated search engine"
 license = "AGPL-3.0-or-later"

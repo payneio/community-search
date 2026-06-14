@@ -169,14 +169,14 @@ There are two distinct levels of peering.
 **Peer search protocol:**
 
 - When a user searches, the local engine queries `POST /api/search` on each enabled collection peer with the search terms
-- Search requests include a `remaining_depth` field to control fanout depth
+- Search requests include a `depth` field to control fanout depth
 - Results from all sources are scored locally using the ranking formula and merged into a single result list
 - SSE streams results to the UI progressively as peers respond
 
 **Fanout depth** -- no recursive fan-out by default, but configurable:
 
 - `fanout_depth: 1` (default) -- search only direct peers. Peers return local results only.
-- `fanout_depth: 2` -- search direct peers + their peers. When a peer receives a query with `remaining_depth > 0`, it fans out to its own peers with `remaining_depth - 1`. At `remaining_depth: 0`, return local results only.
+- `fanout_depth: 2` -- search direct peers + their peers. When a peer receives a query with `depth > 0`, it fans out to its own peers with `depth - 1`. At `depth: 0`, return local results only.
 
 **Peer health:**
 
@@ -277,13 +277,17 @@ There are two distinct levels of peering.
 | `GET /` | Serve embedded search UI |
 | `GET /health` | Service health check |
 | `GET /api/collections` | List this engine's public collections (name + description) |
-| `POST /api/search` | Search a collection (params: query, collection, remaining_depth) |
+| `POST /api/search` | Search a collection (params: query, collection, depth) -- streams SSE |
+| `GET /api/search` | Non-streaming JSON search for scripts/agents (see below) |
+| `GET /robots.txt` | Steers crawlers away from result/API pages |
+| `GET /opensearch.xml` | OpenSearch descriptor so browsers can discover search |
+| `POST /mcp` | MCP server exposing search as a tool for LLM agents (see below) |
 
 **Peer-to-peer (no auth, but rate-limited):**
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/search` | Same endpoint -- peers call it with `remaining_depth` to control fanout |
+| `POST /api/search` | Same endpoint -- peers call it with `depth` to control fanout |
 | `POST /api/gossip/exchange` | Exchange discovered-engine lists (server-level) |
 
 **Admin (token required):**
@@ -303,6 +307,16 @@ There are two distinct levels of peering.
 
 **Result streaming:** Search responses use SSE (`text/event-stream`) -- local results come first, then peer results stream in as they arrive.
 
+### Non-streaming access (scripts, crawlers, LLM agents)
+
+The SSE stream is ideal for the live UI but awkward for machine consumers. Three additional surfaces make the engine usable without a streaming client:
+
+- **`GET /api/search?q=…&collection=…&depth=N`** -- a single GET returns one JSON object: `{ "protocol_version", "results": [...], "duration_ms" }`. Local-only by default; `depth=1`/`2` opts into bounded federated fan-out. (The `POST /api/search` endpoint returns the same JSON when called with `Accept: application/json`.)
+- **`GET /robots.txt` + `GET /opensearch.xml`** -- crawlers are steered *away* from result pages (a search engine's own result pages are thin, infinite-URL-space content), while the OpenSearch descriptor lets browsers discover the engine as a search provider.
+- **`POST /mcp`** -- a minimal [Model Context Protocol](https://modelcontextprotocol.io) server (JSON-RPC over Streamable HTTP) exposing a single `search` tool, so LLM agents (ChatGPT, Claude, etc.) can query the index with a typed tool call instead of scraping HTML.
+
+These are local conveniences, **not** part of the peer federation contract.
+
 ## Community Search Protocol
 
 This project defines the **Community Search Protocol** -- the wire-level specification for how Community Search engines communicate with each other. The protocol document will live at `docs/COMMUNITY_SEARCH_PROTOCOL.md` as a standalone reference that another implementer could use to build a compatible engine.
@@ -317,7 +331,7 @@ This project defines the **Community Search Protocol** -- the wire-level specifi
 
 | Area | What's specified |
 |------|-----------------|
-| Search | `POST /api/search` request/response format, `remaining_depth` semantics, SSE event format for streaming results |
+| Search | `POST /api/search` request/response format, `depth` semantics, SSE event format for streaming results |
 | Gossip | `POST /api/gossip/exchange` request/response format, merge semantics (additive, last-seen update) |
 | Discovery | `GET /api/collections` response format, what metadata an engine exposes publicly |
 | Versioning | Version header convention, how engines handle version mismatches |

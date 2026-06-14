@@ -5,7 +5,7 @@ use axum::{
 };
 
 use crate::api::admin::admin_router;
-use crate::api::public::{health, list_collections, search_handler, AppState};
+use crate::api::public::{health, list_collections, search_get, search_handler, AppState};
 use crate::api::rate_limit::require_rate_limit;
 use crate::middleware::peer_version::add_peer_version_header;
 
@@ -24,15 +24,17 @@ use crate::middleware::peer_version::add_peer_version_header;
 /// `/api/admin/*`) do **not** carry that header — they are merged directly
 /// into the root router without the middleware layer.
 ///
-/// The rate-limit middleware is applied **only** to `POST /api/search` via
-/// `route_layer`.  All other routes are unaffected.
+/// The rate-limit middleware is applied **only** to the `/api/search` route
+/// (both the streaming `POST` and the non-streaming `GET`) via `route_layer`.
+/// All other routes are unaffected.
 ///
 /// State is applied with `.with_state(state)` on the outermost router so
 /// that both the peer sub-router and the admin router can extract it.
 pub fn build_router(state: AppState) -> Router {
     // Rate-limited search route — middleware is scoped to this sub-router only.
+    // `POST` streams SSE; `GET` returns a single JSON document (machine clients).
     let search_route = Router::new()
-        .route("/api/search", post(search_handler))
+        .route("/api/search", post(search_handler).get(search_get))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_rate_limit,
@@ -53,6 +55,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/static/*path", get(crate::api::ui::serve_static))
         .route("/admin", get(crate::api::admin_page))
         .route("/health", get(health))
+        // Machine-discovery + integration surfaces (no version header — these
+        // are UI/agent-facing, not peer-protocol, endpoints).
+        .route("/robots.txt", get(crate::api::ui::serve_robots))
+        .route("/opensearch.xml", get(crate::api::ui::serve_opensearch))
+        .route("/mcp", post(crate::api::mcp::mcp_handler))
         .merge(peer_routes)
         .merge(admin_router(state.clone()))
         // State is applied after all merges so every handler can extract it
